@@ -86,37 +86,36 @@ export default function useVideoChat() {
     const stream = localStreamRef.current
     const room = joinRoom({ appId: APP_ID }, pairId)
     pairRef.current = room
-    const [sendChat, getChat] = room.makeAction("chat")
-    const [sendTp, getTp] = room.makeAction("typing")
-    const [sendBye, getBye] = room.makeAction("bye")
-    sendChatRef.current = sendChat
-    sendByeRef.current = sendBye
-    void sendTp
-    getChat((data) => {
+    const chatAction = room.makeAction("chat")
+    const typingAction = room.makeAction("typing")
+    const byeAction = room.makeAction("bye")
+    sendChatRef.current = (data, opts) => chatAction.send(data, opts)
+    sendByeRef.current = (data, opts) => byeAction.send(data, opts)
+    chatAction.onMessage = (data) => {
       const text = typeof data === "string" ? data : data?.text
       if (typeof text === "string" && text) pushMsg("them", String(text).slice(0, 500))
-    })
-    getTp(() => {
+    }
+    typingAction.onMessage = () => {
       setTypingPeer(true)
       clearTimeout(typingTimer.current)
       typingTimer.current = setTimeout(() => setTypingPeer(false), 2000)
-    })
-    getBye(() => { cleanupPair(true) })
-    room.onPeerStream((s) => {
+    }
+    byeAction.onMessage = () => { cleanupPair(true) }
+    room.onPeerStream = (s) => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = s
         remoteVideoRef.current.play().catch(() => {})
       }
-    })
-    room.onPeerLeave(() => { cleanupPair(true) })
+    }
+    room.onPeerLeave = () => { cleanupPair(true) }
     try { await Promise.all(room.addStream(stream)) } catch { /* noop */ }
-    room.onPeerJoin((peerId) => {
+    room.onPeerJoin = (peerId) => {
       partnerRef.current = peerId
       setPeerShortId(String(peerId).slice(0, 6).toUpperCase())
       setStatus("connected")
       setError("")
       setMessages([{ from: "sys", text: "Conectado. ¡Di hola! 👋", at: Date.now() }])
-    })
+    }
     setTimeout(() => {
       const peers = Object.keys(room.getPeers())
       if (peers.length > 0 && !partnerRef.current && statusRef.current !== "idle") {
@@ -179,30 +178,31 @@ export default function useVideoChat() {
       const lobby = joinRoom({ appId: APP_ID }, LOBBY_ID)
       lobbyRef.current = lobby
       const refresh = () => setPeerCount(Object.keys(lobby.getPeers()).length + 1)
-      lobby.onPeerJoin(refresh)
-      lobby.onPeerLeave(refresh)
-      lobby.onPeerStream(() => {})
-      const [sendReq, getReq] = lobby.makeAction("req")
-      const [sendAck, getAck] = lobby.makeAction("ack")
-      getReq(async (data, ctx) => {
+      lobby.onPeerJoin = refresh
+      lobby.onPeerLeave = refresh
+      lobby.onPeerStream = () => {}
+      const reqAction = lobby.makeAction("req")
+      const ackAction = lobby.makeAction("ack")
+      const sendReq = (data, opts) => reqAction.send(data, opts)
+      const sendAck = (data, opts) => ackAction.send(data, opts)
+      reqAction.onMessage = async (data, ctx) => {
         if (statusRef.current !== "waiting" || partnerRef.current || pairRef.current) return
         const pairId = data?.pairId
         if (typeof pairId !== "string" || !pairId) return
         if (hashId(myIdRef.current) < hashId(ctx.peerId)) return
-        try { await sendAck({ ok: true, pairId }, { target: ctx.peerId }) } catch { /* noop */ }
+        try { await sendAck({ ok: true, pairId }, ctx.peerId ? { target: ctx.peerId } : undefined) } catch { /* noop */ }
         await openPair(pairId)
-      })
-      getAck(async (data) => {
+      }
+      ackAction.onMessage = async (data) => {
         if (statusRef.current !== "waiting" || partnerRef.current || pairRef.current) return
         if (!data || data.ok !== true || typeof data.pairId !== "string") return
         await openPair(data.pairId)
-      })
+      }
       try { await Promise.all(lobby.addStream(stream)) } catch { /* noop */ }
       setStatus("waiting")
       setPeerCount(Object.keys(lobby.getPeers()).length + 1)
       pushMsg("sys", "Buscando a alguien… abre 2 pestañas para probar contigo mismo 🧪")
       matchLoop(lobby, sendReq)
-      void sendAck
     } catch (e) {
       setStatus("error")
       setError("No se pudo conectar a la red P2P: " + (e?.message || e))
@@ -219,7 +219,8 @@ export default function useVideoChat() {
     setTypingPeer(false)
     const lobby = lobbyRef.current
     if (!lobby) return
-    const [sendReq] = lobby.makeAction("req")
+    const reqAction = lobby.makeAction("req")
+    const sendReq = (data, opts) => reqAction.send(data, opts)
     matchLoop(lobby, sendReq)
   }, [cleanupPair, matchLoop])
 
