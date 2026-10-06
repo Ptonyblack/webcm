@@ -25,7 +25,7 @@ export default function VideoChat({ chat }) {
           <p className="font-extrabold leading-tight">
             {connected ? `Conectado con @${chat.peerShortId}` : chat.status === "waiting" ? "Buscando a alguien… 🔎" : "Videochat aleatorio"}
           </p>
-          <p className="text-xs font-bold text-white/70">Tú eres @{chat.selfShortId} · {chat.peerCount} en el lobby</p>
+          <p className="text-xs font-bold text-white/70">Tú eres @{chat.selfShortId} · <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 animate-pulse rounded-full bg-green-400" />{chat.peerCount} en línea ahora</span></p>
         </div>
         {!active && (
           <button onClick={chat.start} className="rounded-full bg-green-500 px-5 py-2 text-sm font-black text-white">▶ Empezar</button>
@@ -89,7 +89,7 @@ export default function VideoChat({ chat }) {
       </div>
 
       <form onSubmit={send} className="flex gap-2 border-t border-line bg-white p-3">
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Escribe un mensaje…" disabled={!connected} className="flex-1 rounded-full border border-line bg-bg-muted px-4 py-2.5 font-semibold outline-none disabled:opacity-50" />
+        <input value={input} onChange={(e) => { setInput(e.target.value); chat.sendTyping && chat.sendTyping() }} placeholder="Escribe un mensaje…" disabled={!connected} className="flex-1 rounded-full border border-line bg-bg-muted px-4 py-2.5 font-semibold outline-none disabled:opacity-50" />
         <button type="submit" disabled={!connected} className="rounded-full bg-primary px-5 py-2.5 font-extrabold text-white disabled:opacity-50">Enviar</button>
       </form>
     </div>

@@ -1,14 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { joinRoom, selfId } from "trystero"
+import { joinRoom, selfId } from "trystero/nostr"
 
-const APP_ID = "webcm-ometv-v1"
-const LOBBY_ID = "lobby-global"
+const APP_ID = "webcm-ometv-v2"
+const LOBBY_ID = "lobby-global-v2"
+const PRESENCE_MS = 4000
+const PEER_TIMEOUT_MS = 12000
+
+const RTC_CFG = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:global.stun.twilio.com:3478" },
+    { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+  ],
+}
+
+const ROOM_CFG = {
+  appId: APP_ID,
+  rtcConfig: RTC_CFG,
+  relayConfig: { urls: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band", "wss://nostr-pub.wellorder.net", "wss://relay.snort.social"], redundancy: 3 },
+}
 
 function hashId(id) {
   let h = 0
   const s = String(id || "")
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
   return h
+}
+
+function shortId(id) {
+  return String(id || "").slice(0, 6).toUpperCase()
 }
 
 export default function useVideoChat() {
@@ -27,46 +49,82 @@ export default function useVideoChat() {
   const lobbyRef = useRef(null)
   const pairRef = useRef(null)
   const sendChatRef = useRef(null)
+  const sendTypingRef = useRef(null)
   const sendByeRef = useRef(null)
+  const reqSendRef = useRef(null)
+  const ackSendRef = useRef(null)
+  const presenceSendRef = useRef(null)
   const partnerRef = useRef("")
   const myIdRef = useRef(selfId)
   const statusRef = useRef("idle")
   const typingTimer = useRef(null)
+  const presenceTimer = useRef(null)
+  const sweepTimer = useRef(null)
+  const matchTimer = useRef(null)
+  const seenRef = useRef(new Map())
+  const busyRef = useRef(new Set())
+  const connectingRef = useRef(false)
   statusRef.current = status
+
+  const refreshCount = useCallback(() => {
+    const now = Date.now()
+    let n = 0
+    for (const t of seenRef.current.values()) if (now - t < PEER_TIMEOUT_MS) n++
+    setPeerCount(n + 1)
+  }, [])
 
   const pushMsg = useCallback((from, text) => {
     setMessages((m) => [...m, { from, text, at: Date.now() }].slice(-100))
   }, [])
 
+  const clearTimers = useCallback(() => {
+    clearTimeout(matchTimer.current)
+    clearInterval(presenceTimer.current)
+    clearInterval(sweepTimer.current)
+    matchTimer.current = null
+    presenceTimer.current = null
+    sweepTimer.current = null
+  }, [])
+
   const cleanupPair = useCallback(async (wasConnected) => {
+    connectingRef.current = false
     try { await pairRef.current?.leave() } catch { /* noop */ }
     pairRef.current = null
     partnerRef.current = ""
     sendChatRef.current = null
+    sendTypingRef.current = null
     sendByeRef.current = null
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
     setTypingPeer(false)
     setPeerShortId("")
-    if (wasConnected) pushMsg("sys", "Se desconectó. Pulsa Siguiente 🔎")
+    if (wasConnected) pushMsg("sys", "Se desconectó. Buscando a alguien nuevo... 🔎")
   }, [pushMsg])
 
   const stopAll = useCallback(async () => {
+    clearTimers()
+    connectingRef.current = false
+    clearTimeout(typingTimer.current)
     try { await pairRef.current?.leave() } catch { /* noop */ }
     try { await lobbyRef.current?.leave() } catch { /* noop */ }
     lobbyRef.current = null
     pairRef.current = null
     partnerRef.current = ""
+    reqSendRef.current = null
+    ackSendRef.current = null
+    presenceSendRef.current = null
+    seenRef.current = new Map()
+    busyRef.current = new Set()
     try { localStreamRef.current?.getTracks().forEach((t) => t.stop()) } catch { /* noop */ }
     localStreamRef.current = null
     if (localVideoRef.current) localVideoRef.current.srcObject = null
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
     setStatus("idle")
     setPeerShortId("")
+    setPeerCount(1)
     setMessages([])
     setTypingPeer(false)
     setError("")
-  }, [])
-
+  }, [clearTimers])
   const startLocal = useCallback(async () => {
     if (localStreamRef.current) return localStreamRef.current
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -81,15 +139,78 @@ export default function useVideoChat() {
     return stream
   }, [])
 
-  const openPair = useCallback(async (pairId) => {
-    if (pairRef.current || !localStreamRef.current) return
+  const attachRemote = useCallback((stream) => {
+    if (!stream || !remoteVideoRef.current) return
+    try {
+      remoteVideoRef.current.srcObject = stream
+      remoteVideoRef.current.play().catch(() => {})
+    } catch { /* noop */ }
+  }, [])
+
+  const markConnected = useCallback((peerId) => {
+    if (statusRef.current !== "waiting" && statusRef.current !== "connected") return
+    if (partnerRef.current && partnerRef.current !== peerId) return
+    connectingRef.current = false
+    busyRef.current.delete(peerId)
+    partnerRef.current = peerId
+    setPeerShortId(shortId(peerId))
+    setStatus("connected")
+    setError("")
+    setMessages([{ from: "sys", text: "Conectado con @" + shortId(peerId) + ". ¡Di hola! 👋", at: Date.now() }])
+  }, [])
+
+  const tryMatchRef = useRef(null)
+
+  const scheduleMatch = useCallback(() => {
+    clearTimeout(matchTimer.current)
+    matchTimer.current = setTimeout(() => tryMatchRef.current && tryMatchRef.current(), 800)
+  }, [])
+
+  const tryMatch = useCallback(async () => {
+    const sendReq = reqSendRef.current
+    if (!lobbyRef.current || !sendReq) return
+    if (statusRef.current !== "waiting" || partnerRef.current || pairRef.current || connectingRef.current) return
+    const now = Date.now()
+    const fresh = [...seenRef.current.entries()].filter(([, t]) => now - t < PEER_TIMEOUT_MS).map(([id]) => id)
+    const avail = fresh.filter((id) => id !== myIdRef.current && !busyRef.current.has(id))
+    refreshCount()
+    if (avail.length === 0) {
+      clearTimeout(matchTimer.current)
+      matchTimer.current = setTimeout(() => tryMatchRef.current && tryMatchRef.current(), 2500)
+      return
+    }
+    const rival = avail.sort((a, b) => hashId(a) - hashId(b))[0]
+    if (hashId(myIdRef.current) < hashId(rival)) {
+      const pairId = "pair-" + [myIdRef.current, rival].sort().join("-").slice(0, 30) + "-" + Date.now().toString(36)
+      try { await sendReq({ pairId, from: myIdRef.current }, { target: rival }) } catch { /* noop */ }
+      clearTimeout(matchTimer.current)
+      matchTimer.current = setTimeout(() => { if (statusRef.current === "waiting" && !partnerRef.current && !connectingRef.current) tryMatchRef.current() }, 3000)
+    } else {
+      clearTimeout(matchTimer.current)
+      matchTimer.current = setTimeout(() => { if (statusRef.current === "waiting" && !partnerRef.current && !connectingRef.current) tryMatchRef.current() }, 3500)
+    }
+  }, [refreshCount])
+
+  tryMatchRef.current = tryMatch
+
+  const openPair = useCallback(async (pairId, targetPeerId) => {
+    if (pairRef.current || connectingRef.current || !localStreamRef.current) return
+    if (!pairId || typeof pairId !== "string") return
+    connectingRef.current = true
     const stream = localStreamRef.current
-    const room = joinRoom({ appId: APP_ID }, pairId)
+    let room
+    try {
+      room = joinRoom(ROOM_CFG, pairId)
+    } catch {
+      connectingRef.current = false
+      return
+    }
     pairRef.current = room
     const chatAction = room.makeAction("chat")
     const typingAction = room.makeAction("typing")
     const byeAction = room.makeAction("bye")
     sendChatRef.current = (data, opts) => chatAction.send(data, opts)
+    sendTypingRef.current = (data, opts) => typingAction.send(data, opts)
     sendByeRef.current = (data, opts) => byeAction.send(data, opts)
     chatAction.onMessage = (data) => {
       const text = typeof data === "string" ? data : data?.text
@@ -100,51 +221,55 @@ export default function useVideoChat() {
       clearTimeout(typingTimer.current)
       typingTimer.current = setTimeout(() => setTypingPeer(false), 2000)
     }
-    byeAction.onMessage = () => { cleanupPair(true) }
-    room.onPeerStream = (s) => {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = s
-        remoteVideoRef.current.play().catch(() => {})
-      }
+    byeAction.onMessage = () => {
+      const was = statusRef.current === "connected" || Boolean(partnerRef.current)
+      cleanupPair(was).then(() => {
+        if (statusRef.current !== "idle") {
+          setStatus("waiting")
+          scheduleMatch()
+        }
+      })
     }
-    room.onPeerLeave = () => { cleanupPair(true) }
+    room.onPeerStream = (s) => attachRemote(s)
+    room.onPeerTrack = (_t, s) => attachRemote(s)
+    room.onPeerLeave = (id) => {
+      if (partnerRef.current && id && partnerRef.current !== id) return
+      const was = statusRef.current === "connected" || Boolean(partnerRef.current)
+      cleanupPair(was).then(() => {
+        if (statusRef.current !== "idle") {
+          setStatus("waiting")
+          scheduleMatch()
+        }
+      })
+    }
+    room.onPeerJoin = (peerId) => markConnected(peerId)
     try { await Promise.all(room.addStream(stream)) } catch { /* noop */ }
-    room.onPeerJoin = (peerId) => {
-      partnerRef.current = peerId
-      setPeerShortId(String(peerId).slice(0, 6).toUpperCase())
-      setStatus("connected")
-      setError("")
-      setMessages([{ from: "sys", text: "Conectado. ¡Di hola! 👋", at: Date.now() }])
-    }
-    setTimeout(() => {
-      const peers = Object.keys(room.getPeers())
-      if (peers.length > 0 && !partnerRef.current && statusRef.current !== "idle") {
-        partnerRef.current = peers[0]
-        setPeerShortId(String(peers[0]).slice(0, 6).toUpperCase())
-        setStatus("connected")
-        setMessages([{ from: "sys", text: "Conectado. ¡Di hola! 👋", at: Date.now() }])
+    try {
+      const peers = Object.keys(room.getPeers() || {})
+      if (peers.length > 0) {
+        const pick = targetPeerId && peers.includes(targetPeerId) ? targetPeerId : peers[0]
+        markConnected(pick)
+        return
       }
-    }, 3000)
-  }, [cleanupPair, pushMsg])
-
-
-  const matchLoop = useCallback(async (lobby, sendReq) => {
-    if (statusRef.current !== "waiting" || partnerRef.current) return
-    const others = Object.keys(lobby.getPeers()).filter((id) => id !== myIdRef.current)
-    setPeerCount(others.length + 1)
-    if (others.length === 0) {
-      setTimeout(() => matchLoop(lobby, sendReq), 2000)
-      return
-    }
-    const rival = others.sort((a, b) => hashId(a) - hashId(b))[0]
-    if (hashId(myIdRef.current) < hashId(rival)) {
-      const pairId = "pair-" + [myIdRef.current, rival].sort().join("-").slice(0, 40) + "-" + Date.now().toString(36)
-      try { await sendReq({ pairId, from: myIdRef.current }) } catch { /* noop */ }
-      setTimeout(() => { if (statusRef.current === "waiting" && !partnerRef.current) matchLoop(lobby, sendReq) }, 3000)
-    } else {
-      setTimeout(() => { if (statusRef.current === "waiting" && !partnerRef.current) matchLoop(lobby, sendReq) }, 3500)
-    }
-  }, [])
+    } catch { /* noop */ }
+    setTimeout(() => {
+      try {
+        const peers = Object.keys(room.getPeers ? room.getPeers() : {})
+        if (!partnerRef.current && peers.length > 0 && statusRef.current !== "idle") {
+          const pick = targetPeerId && peers.includes(targetPeerId) ? targetPeerId : peers[0]
+          markConnected(pick)
+        }
+      } catch { /* noop */ }
+    }, 2500)
+    setTimeout(() => {
+      if (!partnerRef.current && statusRef.current === "waiting") {
+        connectingRef.current = false
+        try { room.leave() } catch { /* noop */ }
+        if (pairRef.current === room) pairRef.current = null
+        scheduleMatch()
+      }
+    }, 12000)
+  }, [attachRemote, cleanupPair, markConnected, scheduleMatch])
 
   const start = useCallback(async () => {
     const st = statusRef.current
@@ -159,12 +284,11 @@ export default function useVideoChat() {
     }
     if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
       setStatus("error")
-      setError("La cámara requiere HTTPS. En local funciona, online necesitas https:// (Vercel lo da gratis).")
+      setError("La cámara requiere HTTPS. En local funciona, online necesitas https://.")
       return
     }
-    let stream
     try {
-      stream = await startLocal()
+      await startLocal()
     } catch (e) {
       setStatus("denied")
       setError(e?.name === "NotAllowedError"
@@ -175,54 +299,102 @@ export default function useVideoChat() {
       return
     }
     try {
-      const lobby = joinRoom({ appId: APP_ID }, LOBBY_ID)
+      const lobby = joinRoom(ROOM_CFG, LOBBY_ID)
       lobbyRef.current = lobby
-      const refresh = () => setPeerCount(Object.keys(lobby.getPeers()).length + 1)
-      lobby.onPeerJoin = refresh
-      lobby.onPeerLeave = refresh
-      lobby.onPeerStream = () => {}
+      const presenceAction = lobby.makeAction("presence")
       const reqAction = lobby.makeAction("req")
       const ackAction = lobby.makeAction("ack")
-      const sendReq = (data, opts) => reqAction.send(data, opts)
-      const sendAck = (data, opts) => ackAction.send(data, opts)
+      const busyAction = lobby.makeAction("busy")
+      presenceSendRef.current = (data, opts) => presenceAction.send(data, opts)
+      reqSendRef.current = (data, opts) => reqAction.send(data, opts)
+      ackSendRef.current = (data, opts) => ackAction.send(data, opts)
+      const noteSeen = (id) => {
+        if (!id || id === myIdRef.current) return
+        seenRef.current.set(id, Date.now())
+        refreshCount()
+      }
+      lobby.onPeerJoin = (id) => noteSeen(id)
+      lobby.onPeerLeave = (id) => {
+        seenRef.current.delete(id)
+        busyRef.current.delete(id)
+        refreshCount()
+      }
+      presenceAction.onMessage = (data, ctx) => {
+        const id = data?.from || ctx?.peerId
+        noteSeen(id)
+        if (!id) return
+        if (data?.busy) busyRef.current.add(id)
+        else busyRef.current.delete(id)
+      }
+      busyAction.onMessage = (data, ctx) => {
+        const id = data?.from || ctx?.peerId
+        if (id) busyRef.current.add(id)
+      }
       reqAction.onMessage = async (data, ctx) => {
-        if (statusRef.current !== "waiting" || partnerRef.current || pairRef.current) return
+        const fromId = data?.from || ctx?.peerId
+        if (fromId) noteSeen(fromId)
+        if (statusRef.current !== "waiting" || partnerRef.current || pairRef.current || connectingRef.current) return
         const pairId = data?.pairId
         if (typeof pairId !== "string" || !pairId) return
-        if (hashId(myIdRef.current) < hashId(ctx.peerId)) return
-        try { await sendAck({ ok: true, pairId }, ctx.peerId ? { target: ctx.peerId } : undefined) } catch { /* noop */ }
-        await openPair(pairId)
+        if (!fromId) return
+        if (hashId(myIdRef.current) < hashId(fromId)) return
+        try { await ackAction.send({ ok: true, pairId, from: myIdRef.current }, { target: fromId }) } catch { /* noop */ }
+        try { await presenceAction.send({ from: myIdRef.current, busy: true }) } catch { /* noop */ }
+        busyRef.current.add(fromId)
+        await openPair(pairId, fromId)
       }
-      ackAction.onMessage = async (data) => {
+      ackAction.onMessage = async (data, ctx) => {
+        const fromId = data?.from || ctx?.peerId
+        if (fromId) noteSeen(fromId)
         if (statusRef.current !== "waiting" || partnerRef.current || pairRef.current) return
         if (!data || data.ok !== true || typeof data.pairId !== "string") return
-        await openPair(data.pairId)
+        try { await presenceAction.send({ from: myIdRef.current, busy: true }) } catch { /* noop */ }
+        if (fromId) busyRef.current.add(fromId)
+        await openPair(data.pairId, fromId)
       }
-      try { await Promise.all(lobby.addStream(stream)) } catch { /* noop */ }
+      const beat = async () => {
+        try { await presenceAction.send({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current) }) } catch { /* noop */ }
+        refreshCount()
+      }
+      await beat()
+      clearInterval(presenceTimer.current)
+      presenceTimer.current = setInterval(beat, PRESENCE_MS)
+      clearInterval(sweepTimer.current)
+      sweepTimer.current = setInterval(() => {
+        const now = Date.now()
+        for (const [id, t] of [...seenRef.current.entries()]) {
+          if (now - t > PEER_TIMEOUT_MS) {
+            seenRef.current.delete(id)
+            busyRef.current.delete(id)
+          }
+        }
+        refreshCount()
+      }, PRESENCE_MS)
+      try {
+        const peers = Object.keys(lobby.getPeers() || {})
+        peers.forEach(noteSeen)
+      } catch { /* noop */ }
       setStatus("waiting")
-      setPeerCount(Object.keys(lobby.getPeers()).length + 1)
-      pushMsg("sys", "Buscando a alguien… abre 2 pestañas para probar contigo mismo 🧪")
-      matchLoop(lobby, sendReq)
+      refreshCount()
+      pushMsg("sys", "En el lobby 👀 buscando a alguien real...")
+      scheduleMatch()
     } catch (e) {
       setStatus("error")
       setError("No se pudo conectar a la red P2P: " + (e?.message || e))
     }
-  }, [matchLoop, openPair, pushMsg, startLocal])
+  }, [openPair, pushMsg, refreshCount, scheduleMatch, startLocal])
 
   const next = useCallback(async () => {
     const st = statusRef.current
     if (st !== "connected" && st !== "waiting") return
     try { await sendByeRef.current?.({ from: myIdRef.current }) } catch { /* noop */ }
+    try { await presenceSendRef.current?.({ from: myIdRef.current, busy: false }) } catch { /* noop */ }
     await cleanupPair(false)
-    setMessages([{ from: "sys", text: "Buscando a alguien nuevo… 🔎", at: Date.now() }])
+    setMessages([{ from: "sys", text: "Buscando a alguien nuevo... 🔎", at: Date.now() }])
     setStatus("waiting")
     setTypingPeer(false)
-    const lobby = lobbyRef.current
-    if (!lobby) return
-    const reqAction = lobby.makeAction("req")
-    const sendReq = (data, opts) => reqAction.send(data, opts)
-    matchLoop(lobby, sendReq)
-  }, [cleanupPair, matchLoop])
+    scheduleMatch()
+  }, [cleanupPair, scheduleMatch])
 
   const sendMessage = useCallback(async (text) => {
     const t = String(text || "").trim().slice(0, 500)
@@ -233,6 +405,10 @@ export default function useVideoChat() {
       return true
     } catch { return false }
   }, [pushMsg])
+
+  const sendTyping = useCallback(async () => {
+    try { await sendTypingRef.current?.({}, partnerRef.current ? { target: partnerRef.current } : undefined) } catch { /* noop */ }
+  }, [])
 
   const toggleCam = useCallback(() => {
     setCamOn((v) => {
@@ -259,14 +435,17 @@ export default function useVideoChat() {
   useEffect(() => () => {
     try { localStreamRef.current?.getTracks().forEach((t) => t.stop()) } catch { /* noop */ }
     clearTimeout(typingTimer.current)
+    clearTimeout(matchTimer.current)
+    clearInterval(presenceTimer.current)
+    clearInterval(sweepTimer.current)
   }, [])
 
   return {
     status, error, camOn, micOn,
     peerCount, peerShortId, messages, typingPeer,
     localVideoRef, remoteVideoRef,
-    selfShortId: String(myIdRef.current).slice(0, 6).toUpperCase(),
-    start, stop: stopAll, next, sendMessage,
+    selfShortId: shortId(myIdRef.current),
+    start, stop: stopAll, next, sendMessage, sendTyping,
     toggleCam, toggleMic, retry: start,
   }
 }
