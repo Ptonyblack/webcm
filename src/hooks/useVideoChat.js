@@ -112,6 +112,7 @@ export default function useVideoChat() {
   const presenceSendRef = useRef(null)
   const partnerRef = useRef("")
   const myIdRef = useRef(selfId)
+  const profileOkRef = useRef(false)
   const myCountryRef = useRef("ANY")
   const myAgeRef = useRef(25)
   const filterCountryRef = useRef("ANY")
@@ -158,6 +159,7 @@ export default function useVideoChat() {
     setMyCountryState(c)
     setProfileDone(false)
     setProfileConfirmed(false)
+    profileOkRef.current = false
     setProfileError("")
     try {
       if (c) localStorage.setItem("vibechat-country", c)
@@ -179,6 +181,7 @@ export default function useVideoChat() {
     setMyAgeState(a)
     setProfileDone(false)
     setProfileConfirmed(false)
+    profileOkRef.current = false
     setProfileError("")
     try { localStorage.setItem("vibechat-age", String(a)) } catch { /* noop */ }
     try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: a, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
@@ -189,6 +192,7 @@ export default function useVideoChat() {
     setFilterCountryState(c)
     setProfileDone(false)
     setProfileConfirmed(false)
+    profileOkRef.current = false
     setProfileError("")
     try { localStorage.setItem("vibechat-filter-country", c) } catch { /* noop */ }
     try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: Number(myAgeRef.current) || null, wantCountry: c, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
@@ -201,6 +205,7 @@ export default function useVideoChat() {
       setFilterAgeMaxState(max === "" ? "" : clampAge(max, ""))
       setProfileDone(false)
       setProfileConfirmed(false)
+      profileOkRef.current = false
       setProfileError("")
       return
     }
@@ -212,6 +217,7 @@ export default function useVideoChat() {
     setFilterAgeMaxState(b)
     setProfileDone(false)
     setProfileConfirmed(false)
+    profileOkRef.current = false
     setProfileError("")
     try { localStorage.setItem("vibechat-filter-min", String(a)); localStorage.setItem("vibechat-filter-max", String(b)) } catch { /* noop */ }
     try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: Number(myAgeRef.current) || null, wantCountry: filterCountryRef.current, wantMin: a, wantMax: b }) } catch { /* noop */ }
@@ -234,18 +240,21 @@ export default function useVideoChat() {
       setProfileError("Completa tu perfil para empezar: falta " + issues.join(", ") + ".")
       setProfileDone(false)
       setProfileConfirmed(false)
+      profileOkRef.current = false
       document.getElementById("filtros")?.scrollIntoView({ behavior: "smooth", block: "center" })
       return false
     }
     setProfileError("")
     setProfileDone(true)
     setProfileConfirmed(true)
+    profileOkRef.current = true
     try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: Number(myAgeRef.current) || null, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
     return true
   }, [profileIssues])
 
-  // La cámara SOLO arranca con confirmación explícita en esta sesión (ni localStorage ni perfil viejo valen)
-  const canStart = useCallback(() => profileConfirmed && profileIssues().length === 0, [profileConfirmed, profileIssues])
+  // La cámara SOLO arranca con confirmación explícita en esta sesión (ni localStorage ni perfil viejo valen).
+  // profileOkRef es la fuente de verdad para start(): evita el stale closure que dejaba Empezar muerto.
+  const canStart = useCallback(() => profileOkRef.current && profileIssues().length === 0, [profileIssues])
 
   function isCompatibleWith(peerId) {
     if (!peerId || peerId === myIdRef.current) return false
@@ -484,7 +493,9 @@ export default function useVideoChat() {
   const start = useCallback(async () => {
     const st = statusRef.current
     if (st === "starting" || st === "connected" || st === "waiting") return
-    if (!canStart()) {
+    // Doble verificación con datos frescos (no del closure): perfil confirmado en esta sesión + campos válidos
+    const issues = profileIssues()
+    if (!profileOkRef.current || issues.length > 0) {
       confirmProfile()
       setStatus("idle")
       return
@@ -621,7 +632,7 @@ export default function useVideoChat() {
       setStatus("error")
       setError("No se pudo conectar a la red P2P: " + (e?.message || e))
     }
-  }, [openPair, pushMsg, refreshCount, scheduleMatch, startLocal])
+  }, [confirmProfile, openPair, profileIssues, pushMsg, refreshCount, scheduleMatch, startLocal])
 
   const next = useCallback(async () => {
     const st = statusRef.current
