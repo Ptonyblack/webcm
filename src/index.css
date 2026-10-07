@@ -57,3 +57,59 @@ body {
 /* ---------- Scrollbar del demo ---------- */
 .demo-scroll::-webkit-scrollbar { width: 6px; }
 .demo-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+
+/* ---------- Efectos premium ---------- */
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 8px 24px rgba(11, 116, 229, 0.28); }
+  50% { box-shadow: 0 8px 36px rgba(11, 116, 229, 0.48); }
+}
+.animate-glow { animation: glow-pulse 2.6s ease-in-out infinite; }
+
+@keyframes gradient-pan {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes rise-in {
+  from { transform: translateY(18px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-rise { animation: rise-in 0.5s ease both; }
+
+/* Sliders de edad con estilo */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #0b74e5, #ff5a5f);
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid #0b74e5;
+  box-shadow: 0 2px 8px rgba(11, 116, 229, 0.4);
+  cursor: grab;
+  transition: transform 0.15s ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid #0b74e5;
+  box-shadow: 0 2px 8px rgba(11, 116, 229, 0.4);
+  cursor: grab;
+}

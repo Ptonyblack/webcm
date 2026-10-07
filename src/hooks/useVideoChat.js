@@ -66,10 +66,9 @@ export default function useVideoChat() {
   const [peerShortId, setPeerShortId] = useState("")
   const [messages, setMessages] = useState([])
   const [typingPeer, setTypingPeer] = useState(false)
-  const [profileDone, setProfileDone] = useState(() => {
-    try { return localStorage.getItem("vibechat-profile-done") === "1" } catch { return false }
-  })
+  const [profileDone, setProfileDone] = useState(false)
   const [profileError, setProfileError] = useState("")
+  const [profileConfirmed, setProfileConfirmed] = useState(false)
   const [myCountry, setMyCountryState] = useState(() => {
     try { return normCountry(localStorage.getItem("vibechat-country"), "") } catch { return "" }
   })
@@ -158,11 +157,11 @@ export default function useVideoChat() {
     const c = normCountry(v, "")
     setMyCountryState(c)
     setProfileDone(false)
+    setProfileConfirmed(false)
     setProfileError("")
     try {
       if (c) localStorage.setItem("vibechat-country", c)
       else localStorage.removeItem("vibechat-country")
-      localStorage.removeItem("vibechat-profile-done")
     } catch { /* noop */ }
     try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: c || "ANY", age: Number(myAgeRef.current) || null, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
   }, [])
@@ -171,15 +170,17 @@ export default function useVideoChat() {
     if (v === "" || v == null) {
       setMyAgeState("")
       setProfileDone(false)
+      setProfileConfirmed(false)
       setProfileError("")
-      try { localStorage.removeItem("vibechat-age"); localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+      try { localStorage.removeItem("vibechat-age") } catch { /* noop */ }
       return
     }
     const a = clampAge(v, "")
     setMyAgeState(a)
     setProfileDone(false)
+    setProfileConfirmed(false)
     setProfileError("")
-    try { localStorage.setItem("vibechat-age", String(a)); localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+    try { localStorage.setItem("vibechat-age", String(a)) } catch { /* noop */ }
     try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: a, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
   }, [])
 
@@ -187,8 +188,9 @@ export default function useVideoChat() {
     const c = normCountry(v, "ANY")
     setFilterCountryState(c)
     setProfileDone(false)
+    setProfileConfirmed(false)
     setProfileError("")
-    try { localStorage.setItem("vibechat-filter-country", c); localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+    try { localStorage.setItem("vibechat-filter-country", c) } catch { /* noop */ }
     try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: Number(myAgeRef.current) || null, wantCountry: c, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
     scheduleMatchRef.current?.()
   }, [])
@@ -198,8 +200,8 @@ export default function useVideoChat() {
       setFilterAgeMinState(min === "" ? "" : clampAge(min, ""))
       setFilterAgeMaxState(max === "" ? "" : clampAge(max, ""))
       setProfileDone(false)
+      setProfileConfirmed(false)
       setProfileError("")
-      try { localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
       return
     }
     const lo = clampAge(min, "")
@@ -209,8 +211,9 @@ export default function useVideoChat() {
     setFilterAgeMinState(a)
     setFilterAgeMaxState(b)
     setProfileDone(false)
+    setProfileConfirmed(false)
     setProfileError("")
-    try { localStorage.setItem("vibechat-filter-min", String(a)); localStorage.setItem("vibechat-filter-max", String(b)); localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+    try { localStorage.setItem("vibechat-filter-min", String(a)); localStorage.setItem("vibechat-filter-max", String(b)) } catch { /* noop */ }
     try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: Number(myAgeRef.current) || null, wantCountry: filterCountryRef.current, wantMin: a, wantMax: b }) } catch { /* noop */ }
     scheduleMatchRef.current?.()
   }, [])
@@ -230,16 +233,19 @@ export default function useVideoChat() {
     if (issues.length > 0) {
       setProfileError("Completa tu perfil para empezar: falta " + issues.join(", ") + ".")
       setProfileDone(false)
-      try { localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+      setProfileConfirmed(false)
       document.getElementById("filtros")?.scrollIntoView({ behavior: "smooth", block: "center" })
       return false
     }
     setProfileError("")
     setProfileDone(true)
-    try { localStorage.setItem("vibechat-profile-done", "1") } catch { /* noop */ }
+    setProfileConfirmed(true)
     try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: Number(myAgeRef.current) || null, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
     return true
   }, [profileIssues])
+
+  // La cámara SOLO arranca con confirmación explícita en esta sesión (ni localStorage ni perfil viejo valen)
+  const canStart = useCallback(() => profileConfirmed && profileIssues().length === 0, [profileConfirmed, profileIssues])
 
   function isCompatibleWith(peerId) {
     if (!peerId || peerId === myIdRef.current) return false
@@ -270,7 +276,7 @@ export default function useVideoChat() {
     setPeerShortId("")
     setPeerCountry("")
     setPeerAge(null)
-    if (wasConnected) pushMsg("sys", "Se desconectó. Buscando a alguien nuevo... 🔎")
+    if (wasConnected) pushMsg("sys", "Se desconectó. Buscando a alguien nuevo...")
   }, [pushMsg])
 
   const stopAll = useCallback(async () => {
@@ -357,7 +363,7 @@ export default function useVideoChat() {
     setPeerAge(Number.isFinite(p?.age) ? p.age : null)
     setStatus("connected")
     setError("")
-    setMessages([{ from: "sys", text: "Conectado con @" + shortId(peerId) + ". ¡Di hola! 👋", at: Date.now() }])
+    setMessages([{ from: "sys", text: "Conectado con @" + shortId(peerId) + ". ¡Di hola!", at: Date.now() }])
   }, [])
 
   const tryMatchRef = useRef(null)
@@ -478,7 +484,7 @@ export default function useVideoChat() {
   const start = useCallback(async () => {
     const st = statusRef.current
     if (st === "starting" || st === "connected" || st === "waiting") return
-    if (!isProfileComplete()) {
+    if (!canStart()) {
       confirmProfile()
       setStatus("idle")
       return
@@ -506,7 +512,7 @@ export default function useVideoChat() {
       setError(e?.name === "NotAllowedError"
         ? isIOS
           ? "Permiso denegado en iPhone/iPad: ve a Ajustes → Safari → Cámara y Micrófono → Permitir, recarga con HTTPS y pulsa Reintentar."
-          : "Permiso denegado: toca el candado 🔒 del navegador, permite Cámara y Micrófono y pulsa Reintentar."
+          : "Permiso denegado: toca el icono del candado del navegador, permite Cámara y Micrófono y pulsa Reintentar."
         : e?.name === "NotFoundError"
           ? "No se encontró cámara o micrófono en este dispositivo."
           : e?.name === "OverconstrainedError" || e?.name === "ConstraintNotSatisfiedError"
@@ -609,7 +615,7 @@ export default function useVideoChat() {
       } catch { /* noop */ }
       setStatus("waiting")
       refreshCount()
-      pushMsg("sys", "En el lobby 👀 buscando a alguien real...")
+      pushMsg("sys", "En el lobby, buscando a alguien real...")
       scheduleMatch()
     } catch (e) {
       setStatus("error")
@@ -623,7 +629,7 @@ export default function useVideoChat() {
     try { await sendByeRef.current?.({ from: myIdRef.current }) } catch { /* noop */ }
     try { await presenceSendRef.current?.({ from: myIdRef.current, busy: false, country: myCountryRef.current, age: myAgeRef.current, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
     await cleanupPair(false)
-    setMessages([{ from: "sys", text: "Buscando a alguien nuevo... 🔎", at: Date.now() }])
+    setMessages([{ from: "sys", text: "Buscando a alguien nuevo...", at: Date.now() }])
     setStatus("waiting")
     setTypingPeer(false)
     scheduleMatch()
@@ -677,7 +683,7 @@ export default function useVideoChat() {
     status, error, camOn, micOn,
     peerCount, peerShortId, peerCountry, peerAge, messages, typingPeer,
     myCountry, myAge, filterCountry, filterAgeMin, filterAgeMax, MIN_AGE, MAX_AGE,
-    profileDone, profileError, isProfileComplete, confirmProfile,
+    profileDone, profileError, profileConfirmed, isProfileComplete, canStart, confirmProfile,
     setMyCountry, setMyAge, setFilterCountry, setAgeRange,
     localVideoRef, remoteVideoRef,
     selfShortId: shortId(myIdRef.current),

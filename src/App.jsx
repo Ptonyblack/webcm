@@ -4,6 +4,10 @@ import Logo from "./components/Logo.jsx"
 import VideoChat from "./components/VideoChat.jsx"
 import FilterBar from "./components/FilterBar.jsx"
 import useVideoChat from "./hooks/useVideoChat.js"
+import {
+  IconPlay, IconVideo, IconCheckCircle, IconShield,
+  IconZap, IconGlobe, IconLock, IconDevice, IconDice, IconChat, IconDoc,
+} from "./components/icons.jsx"
 
 const FAQS = [
   { q: "¿VibeChat es gratis?", a: "Sí, el chat de vídeo aleatorio es 100% gratis, sin límite de tiempo y sin necesidad de registro." },
@@ -14,18 +18,18 @@ const FAQS = [
 ]
 
 const STEPS = [
-  { n: "1", t: "Pulsa Empezar", d: "Un clic y entras al lobby. Sin registros ni formularios." },
+  { n: "1", t: "Completa tu perfil", d: "Elige tu país y el rango de edad (18–50). Sin este paso no se activa la cámara." },
   { n: "2", t: "Permite cámara y micro", d: "El navegador te pedirá permiso. Acepta para el videochat real." },
-  { n: "3", t: "Conoce gente real", d: "Te emparejamos 1 a 1. Siguiente para cambiar." },
+  { n: "3", t: "Conoce gente real", d: "Te emparejamos 1 a 1 con tus filtros. Siguiente para cambiar." },
 ]
 
 const PERKS = [
-  { icon: "⚡", t: "Sin límites", d: "Chatea todo el tiempo que quieras, gratis y sin cortes." },
-  { icon: "🌍", t: "P2P global", d: "Conexión directa entre navegadores vía WebRTC." },
-  { icon: "🔒", t: "Sin servidor de vídeo", d: "El vídeo no pasa por nuestros servidores." },
-  { icon: "📱", t: "En cualquier dispositivo", d: "Móvil, tablet o PC. Solo necesitas el navegador." },
-  { icon: "🎲", t: "Aleatorio 1 a 1", d: "Cada clic en Siguiente busca a otra persona." },
-  { icon: "💬", t: "Texto + vídeo", d: "Combina cámara con chat de texto en vivo." },
+  { Icon: IconZap, t: "Sin límites", d: "Chatea todo el tiempo que quieras, gratis y sin cortes." },
+  { Icon: IconGlobe, t: "P2P global", d: "Conexión directa entre navegadores vía WebRTC." },
+  { Icon: IconLock, t: "Sin servidor de vídeo", d: "El vídeo no pasa por nuestros servidores." },
+  { Icon: IconDevice, t: "En cualquier dispositivo", d: "Móvil, tablet o PC. Solo necesitas el navegador." },
+  { Icon: IconDice, t: "Aleatorio 1 a 1", d: "Cada clic en Siguiente busca a otra persona." },
+  { Icon: IconChat, t: "Texto + vídeo", d: "Combina cámara con chat de texto en vivo." },
 ]
 
 const RULES = [
@@ -48,7 +52,7 @@ export default function App() {
     document.getElementById("filtros")?.scrollIntoView({ behavior: "smooth", block: "center" })
   }
   const startAndGo = () => {
-    if (!chat.isProfileComplete()) {
+    if (!chat.canStart()) {
       chat.confirmProfile()
       goFilters()
       setPendingStart(true)
@@ -75,21 +79,50 @@ export default function App() {
                 <span className="tabular-nums">{chat.peerCount} en el lobby ahora</span>
               </p>
               <h1 className="text-4xl font-black leading-[1.08] sm:text-5xl lg:text-[3.4rem]">
-                Videochat <span className="text-primary">real</span> con cámara y micro 🎥
+                Videochat <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">real</span> con cámara y micro
               </h1>
               <p className="mt-5 max-w-xl text-lg text-ink-soft">
-                Sin bots: al pulsar Empezar se activa tu cámara y te emparejamos 1 a 1 con otra persona.
+                Sin bots: completa tu perfil, activa tu cámara y te emparejamos 1 a 1 con otra persona.
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
-                <button onClick={startAndGo} className="rounded-full bg-primary px-7 py-3.5 text-lg font-extrabold text-white shadow-lg hover:bg-primary-dark">
-                  ▶ Empezar chat gratis
+                <button onClick={startAndGo} className="group inline-flex items-center gap-2.5 rounded-full bg-gradient-to-r from-primary to-primary-dark px-7 py-3.5 text-lg font-extrabold text-white shadow-lg shadow-primary/30 transition hover:shadow-xl hover:shadow-primary/40 active:scale-[.98]">
+                  <IconPlay className="h-5 w-5 transition group-hover:scale-110" />
+                  Empezar chat gratis
                 </button>
+                {!chat.profileConfirmed && (
+                  <button onClick={goFilters} className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-6 py-3.5 font-extrabold text-ink-soft shadow-sm transition hover:border-primary hover:text-primary">
+                    <IconShield className="h-5 w-5" />
+                    Completar perfil
+                  </button>
+                )}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-x-5 gap-y-1.5 text-sm font-bold text-ink-soft">
+                <span className="inline-flex items-center gap-1.5"><IconCheckCircle className="h-4 w-4 text-green-500" /> Gratis, sin registro</span>
+                <span className="inline-flex items-center gap-1.5"><IconCheckCircle className="h-4 w-4 text-green-500" /> P2P cifrado</span>
+                <span className="inline-flex items-center gap-1.5"><IconCheckCircle className="h-4 w-4 text-green-500" /> Móvil y PC</span>
               </div>
             </div>
             <div className="overflow-hidden rounded-3xl border border-line bg-dark shadow-xl">
-              <video ref={chat.localVideoRef} autoPlay playsInline muted className="aspect-video w-full -scale-x-100 bg-black object-cover" />
+              <div className="relative">
+                <video ref={chat.localVideoRef} autoPlay playsInline muted className="aspect-video w-full -scale-x-100 bg-black object-cover" />
+                {chat.status === "idle" && !chat.profileConfirmed && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-dark/70 p-6 text-center backdrop-blur-[2px]">
+                    <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-white">
+                      <IconVideo className="h-8 w-8" />
+                    </span>
+                    <p className="max-w-[26ch] font-extrabold text-white">La vista previa se activa tras confirmar tu perfil</p>
+                    <button onClick={goFilters} className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-black text-ink transition hover:bg-primary-light hover:text-primary">
+                      <IconShield className="h-4 w-4" />
+                      Ir al perfil
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="flex items-center justify-center gap-3 px-3 py-4">
-                <button onClick={startAndGo} className="rounded-full bg-green-500 px-5 py-2 text-sm font-extrabold text-white">Activar cámara 🎥</button>
+                <button onClick={startAndGo} className="inline-flex items-center gap-2 rounded-full bg-green-500 px-5 py-2 text-sm font-extrabold text-white transition hover:bg-green-600 active:scale-[.98]">
+                  <IconVideo className="h-4 w-4" />
+                  Activar cámara
+                </button>
               </div>
             </div>
           </div>
@@ -121,8 +154,10 @@ export default function App() {
           <h2 className="mt-2 text-3xl font-black sm:text-4xl">Ventajas del videochat P2P</h2>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {PERKS.map((p) => (
-              <div key={p.t} className="rounded-2xl border border-line bg-white p-6 shadow-sm">
-                <span className="text-3xl">{p.icon}</span>
+              <div key={p.t} className="group rounded-2xl border border-line bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-light to-white text-primary ring-1 ring-line transition group-hover:from-primary group-hover:to-primary-dark group-hover:text-white">
+                  <p.Icon className="h-6 w-6" />
+                </span>
                 <h3 className="mt-3 text-lg font-extrabold">{p.t}</h3>
                 <p className="mt-1 text-ink-soft">{p.d}</p>
               </div>
@@ -148,11 +183,16 @@ export default function App() {
         <section id="reglas" className="mx-auto w-[min(1180px,92%)] py-16">
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="rounded-3xl border border-line bg-white p-7 shadow-sm">
-              <h2 className="text-2xl font-black">📋 Reglas de la comunidad</h2>
+              <h2 className="flex items-center gap-2.5 text-2xl font-black">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-light text-primary">
+                  <IconDoc className="h-5 w-5" />
+                </span>
+                Reglas de la comunidad
+              </h2>
               <ul className="mt-4 space-y-2.5">
                 {RULES.map((r, i) => (
                   <li key={i} className="flex gap-2.5 rounded-xl bg-bg-muted px-4 py-3 text-[.95rem] font-semibold">
-                    <span className="text-green-600">✔</span> {r}
+                    <IconCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-green-600" /> {r}
                   </li>
                 ))}
               </ul>
@@ -160,15 +200,16 @@ export default function App() {
             <div className="flex flex-col justify-center rounded-3xl bg-dark p-8 text-white sm:p-10">
               <Logo light />
               <h2 className="mt-4 text-3xl font-black leading-tight">¿Listo para conocer a alguien nuevo?</h2>
-              <button onClick={startAndGo} className="mt-6 w-fit rounded-full bg-accent px-8 py-3.5 text-lg font-extrabold text-white">
-                Empezar ahora — es gratis 🚀
+              <button onClick={startAndGo} className="mt-6 inline-flex w-fit items-center gap-2.5 rounded-full bg-accent px-8 py-3.5 text-lg font-extrabold text-white shadow-lg shadow-accent/30 transition hover:brightness-110 active:scale-[.98]">
+                <IconPlay className="h-5 w-5" />
+                Empezar ahora — es gratis
               </button>
             </div>
           </div>
         </section>
       </main>
       <footer className="border-t border-line bg-bg-muted py-8 text-center text-sm font-semibold text-ink-soft">
-        <p>© 2026 VibeChat — P2P real, sin bots 🔒</p>
+        <p className="inline-flex items-center gap-2"><IconLock className="h-4 w-4" /> © 2026 VibeChat — P2P real, sin bots</p>
       </footer>
     </div>
   )
