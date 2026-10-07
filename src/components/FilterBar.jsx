@@ -5,7 +5,7 @@ import { IconSliders, IconPin, IconUsers, IconCheckCircle, IconAlert, IconLock, 
  * Panel "Tu perfil + filtros" para VibeChat (PASO OBLIGATORIO antes de Empezar).
  * País con banderas y rango de edad 18–50. Sin confirmar no se abre la cámara.
  */
-export default function FilterBar({ chat, onConfirmed }) {
+export default function FilterBar({ chat }) {
   const lo = chat.filterAgeMin === "" ? "" : Math.min(chat.filterAgeMin, chat.filterAgeMax === "" ? chat.filterAgeMin : chat.filterAgeMax)
   const hi = chat.filterAgeMax === "" ? "" : Math.max(chat.filterAgeMin === "" ? chat.filterAgeMax : chat.filterAgeMin, chat.filterAgeMax)
 
@@ -15,7 +15,7 @@ export default function FilterBar({ chat, onConfirmed }) {
   const ready = chat.isProfileComplete()
 
   const confirm = () => {
-    if (chat.confirmProfile()) onConfirmed?.()
+    chat.confirmProfile()
   }
 
   const summary = lo === "" || hi === ""

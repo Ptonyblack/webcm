@@ -50,8 +50,13 @@ export default function VideoChat({ chat, onNeedProfile }) {
           </p>
         </div>
         {!active && (
-          <button onClick={gatedStart} className="inline-flex items-center gap-2 rounded-full bg-green-500 px-5 py-2 text-sm font-black text-white transition hover:bg-green-600 active:scale-[.97]">
-            <IconPlay className="h-4 w-4" /> Empezar
+          <button
+            onClick={gatedStart}
+            disabled={!chat.canStart()}
+            title={chat.canStart() ? "Empezar el videochat" : "Primero confirma tu perfil y filtros"}
+            className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-black text-white transition active:scale-[.97] ${chat.canStart() ? "bg-green-500 hover:bg-green-600" : "cursor-not-allowed bg-ink-soft/40 opacity-60"}`}
+          >
+            <IconPlay className="h-4 w-4" /> {chat.canStart() ? "Empezar" : "Completa el perfil"}
           </button>
         )}
         {active && (

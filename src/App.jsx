@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useState } from "react"
 import Header from "./components/Header.jsx"
 import Logo from "./components/Logo.jsx"
 import VideoChat from "./components/VideoChat.jsx"
@@ -47,30 +47,19 @@ function scrollToChat() {
 export default function App() {
   const chat = useVideoChat()
   const [openFaq, setOpenFaq] = useState(0)
-  const pendingStartRef = useRef(false)
-  const chatRef = useRef(chat)
-  chatRef.current = chat
+  const canStart = chat.canStart()
   const goFilters = () => {
     document.getElementById("filtros")?.scrollIntoView({ behavior: "smooth", block: "center" })
   }
-  const doStart = () => {
-    scrollToChat()
-    setTimeout(() => chatRef.current.start(), 400)
-  }
+  // Si no hay perfil confirmado, los botones Empezar solo llevan a los filtros.
+  // Una vez validado, el mismo botón arranca la cámara directamente.
   const startAndGo = () => {
-    if (!chatRef.current.canStart()) {
-      // No confirmar aquí, dejar que FilterBar lo haga
-      pendingStartRef.current = true
+    if (!chat.canStart()) {
       goFilters()
       return
     }
-    pendingStartRef.current = false
-    doStart()
-  }
-  const onProfileConfirmed = () => {
-    if (!pendingStartRef.current) return
-    pendingStartRef.current = false
-    doStart()
+    scrollToChat()
+    setTimeout(() => chat.start(), 400)
   }
   return (
     <div className="min-h-screen bg-white text-ink">
@@ -90,9 +79,14 @@ export default function App() {
                 Sin bots: completa tu perfil, activa tu cámara y te emparejamos 1 a 1 con otra persona.
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
-                <button onClick={startAndGo} className="group inline-flex items-center gap-2.5 rounded-full bg-gradient-to-r from-primary to-primary-dark px-7 py-3.5 text-lg font-extrabold text-white shadow-lg shadow-primary/30 transition hover:shadow-xl hover:shadow-primary/40 active:scale-[.98]">
+                <button
+                  onClick={startAndGo}
+                  disabled={!canStart}
+                  title={canStart ? "Empezar el videochat" : "Primero confirma tu perfil y filtros"}
+                  className={`group inline-flex items-center gap-2.5 rounded-full px-7 py-3.5 text-lg font-extrabold text-white shadow-lg transition active:scale-[.98] ${canStart ? "bg-gradient-to-r from-primary to-primary-dark shadow-primary/30 hover:shadow-xl hover:shadow-primary/40" : "cursor-not-allowed bg-ink-soft/40 shadow-none opacity-60"}`}
+                >
                   <IconPlay className="h-5 w-5 transition group-hover:scale-110" />
-                  Empezar chat gratis
+                  {canStart ? "Empezar chat gratis" : "Completa tu perfil para empezar"}
                 </button>
                 {!chat.profileConfirmed && (
                   <button onClick={goFilters} className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-6 py-3.5 font-extrabold text-ink-soft shadow-sm transition hover:border-primary hover:text-primary">
@@ -124,9 +118,14 @@ export default function App() {
                 )}
               </div>
               <div className="flex items-center justify-center gap-3 px-3 py-4">
-                <button onClick={startAndGo} className="inline-flex items-center gap-2 rounded-full bg-green-500 px-5 py-2 text-sm font-extrabold text-white transition hover:bg-green-600 active:scale-[.98]">
+                <button
+                  onClick={startAndGo}
+                  disabled={!canStart}
+                  title={canStart ? "Activar cámara" : "Primero confirma tu perfil y filtros"}
+                  className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-extrabold text-white transition active:scale-[.98] ${canStart ? "bg-green-500 hover:bg-green-600" : "cursor-not-allowed bg-ink-soft/40 opacity-60"}`}
+                >
                   <IconVideo className="h-4 w-4" />
-                  Activar cámara
+                  {canStart ? "Activar cámara" : "Perfil incompleto"}
                 </button>
               </div>
             </div>
@@ -149,7 +148,7 @@ export default function App() {
           <div className="mx-auto w-[min(1180px,92%)]">
             <h2 className="mt-2 text-3xl font-black sm:text-4xl">Videochat aleatorio real</h2>
             <p className="mt-2 max-w-2xl text-ink-soft">Paso 1: completa tu país y rango de edad (18–50). Paso 2: confirma y pulsa Empezar para activar la cámara.</p>
-            <FilterBar chat={chat} onConfirmed={onProfileConfirmed} />
+            <FilterBar chat={chat} />
             <VideoChat chat={chat} onNeedProfile={goFilters} />
           </div>
         </section>
@@ -207,7 +206,7 @@ export default function App() {
               <h2 className="mt-4 text-3xl font-black leading-tight">¿Listo para conocer a alguien nuevo?</h2>
               <button onClick={startAndGo} className="mt-6 inline-flex w-fit items-center gap-2.5 rounded-full bg-accent px-8 py-3.5 text-lg font-extrabold text-white shadow-lg shadow-accent/30 transition hover:brightness-110 active:scale-[.98]">
                 <IconPlay className="h-5 w-5" />
-                Empezar ahora — es gratis
+                {canStart ? "Empezar ahora — es gratis" : "Completa tu perfil para empezar"}
               </button>
             </div>
           </div>
