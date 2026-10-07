@@ -5,6 +5,25 @@ const APP_ID = "vibechat-p2p-v1"
 const LOBBY_ID = "lobby-global-v2"
 const PRESENCE_MS = 4000
 const PEER_TIMEOUT_MS = 12000
+const MIN_AGE = 18
+const MAX_AGE = 50
+
+function clampAge(v, fallback = 25) {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(MAX_AGE, Math.max(MIN_AGE, Math.round(n)))
+}
+
+function normCountry(v, fallback = "ANY") {
+  const c = String(v || "").toUpperCase()
+  return /^[A-Z]{2,3}$/.test(c) ? c : fallback
+}
+
+function inAgeRange(age, min, max) {
+  const a = Number(age)
+  if (!Number.isFinite(a)) return true
+  return a >= min && a <= max
+}
 
 const RTC_CFG = {
   iceServers: [
@@ -42,6 +61,23 @@ export default function useVideoChat() {
   const [peerShortId, setPeerShortId] = useState("")
   const [messages, setMessages] = useState([])
   const [typingPeer, setTypingPeer] = useState(false)
+  const [myCountry, setMyCountryState] = useState(() => {
+    try { return normCountry(localStorage.getItem("vibechat-country"), "ANY") } catch { return "ANY" }
+  })
+  const [myAge, setMyAgeState] = useState(() => {
+    try { return clampAge(localStorage.getItem("vibechat-age"), 25) } catch { return 25 }
+  })
+  const [filterCountry, setFilterCountryState] = useState(() => {
+    try { return normCountry(localStorage.getItem("vibechat-filter-country"), "ANY") } catch { return "ANY" }
+  })
+  const [filterAgeMin, setFilterAgeMinState] = useState(() => {
+    try { return clampAge(localStorage.getItem("vibechat-filter-min"), MIN_AGE, MIN_AGE) } catch { return MIN_AGE }
+  })
+  const [filterAgeMax, setFilterAgeMaxState] = useState(() => {
+    try { return clampAge(localStorage.getItem("vibechat-filter-max"), MAX_AGE, MAX_AGE) } catch { return MAX_AGE }
+  })
+  const [peerCountry, setPeerCountry] = useState("")
+  const [peerAge, setPeerAge] = useState(null)
 
   const localStreamRef = useRef(null)
   const localVideoRef = useRef(null)
@@ -56,6 +92,17 @@ export default function useVideoChat() {
   const presenceSendRef = useRef(null)
   const partnerRef = useRef("")
   const myIdRef = useRef(selfId)
+  const myCountryRef = useRef("ANY")
+  const myAgeRef = useRef(25)
+  const filterCountryRef = useRef("ANY")
+  const filterAgeMinRef = useRef(MIN_AGE)
+  const filterAgeMaxRef = useRef(MAX_AGE)
+  const profileRef = useRef(new Map())
+  myCountryRef.current = myCountry
+  myAgeRef.current = myAge
+  filterCountryRef.current = filterCountry
+  filterAgeMinRef.current = Math.min(filterAgeMin, filterAgeMax)
+  filterAgeMaxRef.current = Math.max(filterAgeMin, filterAgeMax)
   const statusRef = useRef("idle")
   const typingTimer = useRef(null)
   const presenceTimer = useRef(null)
@@ -86,6 +133,56 @@ export default function useVideoChat() {
     sweepTimer.current = null
   }, [])
 
+  const setMyCountry = useCallback((v) => {
+    const c = normCountry(v, "ANY")
+    setMyCountryState(c)
+    try { localStorage.setItem("vibechat-country", c) } catch { /* noop */ }
+    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: c, age: myAgeRef.current, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
+  }, [])
+
+  const setMyAge = useCallback((v) => {
+    const a = clampAge(v, 25)
+    setMyAgeState(a)
+    try { localStorage.setItem("vibechat-age", String(a)) } catch { /* noop */ }
+    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current, age: a, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
+  }, [])
+
+  const setFilterCountry = useCallback((v) => {
+    const c = normCountry(v, "ANY")
+    setFilterCountryState(c)
+    try { localStorage.setItem("vibechat-filter-country", c) } catch { /* noop */ }
+    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current, age: myAgeRef.current, wantCountry: c, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
+    scheduleMatchRef.current?.()
+  }, [])
+
+  const setAgeRange = useCallback((min, max) => {
+    const lo = clampAge(min, MIN_AGE)
+    const hi = clampAge(max, MAX_AGE)
+    const a = Math.min(lo, hi)
+    const b = Math.max(lo, hi)
+    setFilterAgeMinState(a)
+    setFilterAgeMaxState(b)
+    try { localStorage.setItem("vibechat-filter-min", String(a)); localStorage.setItem("vibechat-filter-max", String(b)) } catch { /* noop */ }
+    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current, age: myAgeRef.current, wantCountry: filterCountryRef.current, wantMin: a, wantMax: b }) } catch { /* noop */ }
+    scheduleMatchRef.current?.()
+  }, [])
+
+  function isCompatibleWith(peerId) {
+    if (!peerId || peerId === myIdRef.current) return false
+    const p = profileRef.current.get(peerId)
+    const wCountry = filterCountryRef.current
+    const wMin = Math.min(filterAgeMinRef.current, filterAgeMaxRef.current)
+    const wMax = Math.max(filterAgeMinRef.current, filterAgeMaxRef.current)
+    if (p) {
+      if (wCountry !== "ANY" && p.country && p.country !== "ANY" && p.country !== wCountry) return false
+      if (!inAgeRange(p.age, wMin, wMax)) return false
+      if (p.wantCountry && p.wantCountry !== "ANY" && myCountryRef.current !== "ANY" && p.wantCountry !== myCountryRef.current) return false
+      if (Number.isFinite(p.wantMin) && Number.isFinite(p.wantMax) && !inAgeRange(myAgeRef.current, Math.min(p.wantMin, p.wantMax), Math.max(p.wantMin, p.wantMax))) return false
+      return true
+    }
+    return wCountry === "ANY"
+  }
+
   const cleanupPair = useCallback(async (wasConnected) => {
     connectingRef.current = false
     try { await pairRef.current?.leave() } catch { /* noop */ }
@@ -97,6 +194,8 @@ export default function useVideoChat() {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
     setTypingPeer(false)
     setPeerShortId("")
+    setPeerCountry("")
+    setPeerAge(null)
     if (wasConnected) pushMsg("sys", "Se desconectó. Buscando a alguien nuevo... 🔎")
   }, [pushMsg])
 
@@ -114,12 +213,17 @@ export default function useVideoChat() {
     presenceSendRef.current = null
     seenRef.current = new Map()
     busyRef.current = new Set()
+    profileRef.current = new Map()
+    setPeerCountry("")
+    setPeerAge(null)
     try { localStreamRef.current?.getTracks().forEach((t) => t.stop()) } catch { /* noop */ }
     localStreamRef.current = null
     if (localVideoRef.current) localVideoRef.current.srcObject = null
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
     setStatus("idle")
     setPeerShortId("")
+    setPeerCountry("")
+    setPeerAge(null)
     setPeerCount(1)
     setMessages([])
     setTypingPeer(false)
@@ -147,6 +251,8 @@ export default function useVideoChat() {
     } catch { /* noop */ }
   }, [])
 
+  const scheduleMatchRef = useRef(null)
+
   const markConnected = useCallback((peerId) => {
     if (statusRef.current !== "waiting" && statusRef.current !== "connected") return
     if (partnerRef.current && partnerRef.current !== peerId) return
@@ -154,6 +260,9 @@ export default function useVideoChat() {
     busyRef.current.delete(peerId)
     partnerRef.current = peerId
     setPeerShortId(shortId(peerId))
+    const p = profileRef.current.get(peerId)
+    setPeerCountry(p?.country && p.country !== "ANY" ? p.country : "")
+    setPeerAge(Number.isFinite(p?.age) ? p.age : null)
     setStatus("connected")
     setError("")
     setMessages([{ from: "sys", text: "Conectado con @" + shortId(peerId) + ". ¡Di hola! 👋", at: Date.now() }])
@@ -166,13 +275,15 @@ export default function useVideoChat() {
     matchTimer.current = setTimeout(() => tryMatchRef.current && tryMatchRef.current(), 800)
   }, [])
 
+  scheduleMatchRef.current = scheduleMatch
+
   const tryMatch = useCallback(async () => {
     const sendReq = reqSendRef.current
     if (!lobbyRef.current || !sendReq) return
     if (statusRef.current !== "waiting" || partnerRef.current || pairRef.current || connectingRef.current) return
     const now = Date.now()
     const fresh = [...seenRef.current.entries()].filter(([, t]) => now - t < PEER_TIMEOUT_MS).map(([id]) => id)
-    const avail = fresh.filter((id) => id !== myIdRef.current && !busyRef.current.has(id))
+    const avail = fresh.filter((id) => id !== myIdRef.current && !busyRef.current.has(id) && isCompatibleWith(id))
     refreshCount()
     if (avail.length === 0) {
       clearTimeout(matchTimer.current)
@@ -182,7 +293,7 @@ export default function useVideoChat() {
     const rival = avail.sort((a, b) => hashId(a) - hashId(b))[0]
     if (hashId(myIdRef.current) < hashId(rival)) {
       const pairId = "pair-" + [myIdRef.current, rival].sort().join("-").slice(0, 30) + "-" + Date.now().toString(36)
-      try { await sendReq({ pairId, from: myIdRef.current }, { target: rival }) } catch { /* noop */ }
+      try { await sendReq({ pairId, from: myIdRef.current, country: myCountryRef.current, age: myAgeRef.current, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }, { target: rival }) } catch { /* noop */ }
       clearTimeout(matchTimer.current)
       matchTimer.current = setTimeout(() => { if (statusRef.current === "waiting" && !partnerRef.current && !connectingRef.current) tryMatchRef.current() }, 3000)
     } else {
@@ -317,12 +428,24 @@ export default function useVideoChat() {
       lobby.onPeerLeave = (id) => {
         seenRef.current.delete(id)
         busyRef.current.delete(id)
+        profileRef.current.delete(id)
         refreshCount()
+      }
+      const saveProfile = (id, data) => {
+        if (!id) return
+        profileRef.current.set(id, {
+          country: normCountry(data?.country, "ANY"),
+          age: Number.isFinite(Number(data?.age)) ? clampAge(data.age, 25) : null,
+          wantCountry: normCountry(data?.wantCountry, "ANY"),
+          wantMin: Number.isFinite(Number(data?.wantMin)) ? clampAge(data.wantMin, MIN_AGE) : MIN_AGE,
+          wantMax: Number.isFinite(Number(data?.wantMax)) ? clampAge(data.wantMax, MAX_AGE) : MAX_AGE,
+        })
       }
       presenceAction.onMessage = (data, ctx) => {
         const id = data?.from || ctx?.peerId
         noteSeen(id)
         if (!id) return
+        saveProfile(id, data)
         if (data?.busy) busyRef.current.add(id)
         else busyRef.current.delete(id)
       }
@@ -330,6 +453,7 @@ export default function useVideoChat() {
         const id = data?.from || ctx?.peerId
         if (id) busyRef.current.add(id)
       }
+      const profilePayload = () => ({ from: myIdRef.current, country: myCountryRef.current, age: myAgeRef.current, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current })
       reqAction.onMessage = async (data, ctx) => {
         const fromId = data?.from || ctx?.peerId
         if (fromId) noteSeen(fromId)
@@ -337,9 +461,11 @@ export default function useVideoChat() {
         const pairId = data?.pairId
         if (typeof pairId !== "string" || !pairId) return
         if (!fromId) return
+        saveProfile(fromId, data)
+        if (!isCompatibleWith(fromId)) return
         if (hashId(myIdRef.current) < hashId(fromId)) return
-        try { await ackAction.send({ ok: true, pairId, from: myIdRef.current }, { target: fromId }) } catch { /* noop */ }
-        try { await presenceAction.send({ from: myIdRef.current, busy: true }) } catch { /* noop */ }
+        try { await ackAction.send({ ok: true, pairId, from: myIdRef.current, ...profilePayload() }, { target: fromId }) } catch { /* noop */ }
+        try { await presenceAction.send({ from: myIdRef.current, busy: true, ...profilePayload() }) } catch { /* noop */ }
         busyRef.current.add(fromId)
         await openPair(pairId, fromId)
       }
@@ -348,12 +474,14 @@ export default function useVideoChat() {
         if (fromId) noteSeen(fromId)
         if (statusRef.current !== "waiting" || partnerRef.current || pairRef.current) return
         if (!data || data.ok !== true || typeof data.pairId !== "string") return
-        try { await presenceAction.send({ from: myIdRef.current, busy: true }) } catch { /* noop */ }
+        saveProfile(fromId, data)
+        if (fromId && !isCompatibleWith(fromId)) return
+        try { await presenceAction.send({ from: myIdRef.current, busy: true, ...profilePayload() }) } catch { /* noop */ }
         if (fromId) busyRef.current.add(fromId)
         await openPair(data.pairId, fromId)
       }
       const beat = async () => {
-        try { await presenceAction.send({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current) }) } catch { /* noop */ }
+        try { await presenceAction.send({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), ...profilePayload() }) } catch { /* noop */ }
         refreshCount()
       }
       await beat()
@@ -388,7 +516,7 @@ export default function useVideoChat() {
     const st = statusRef.current
     if (st !== "connected" && st !== "waiting") return
     try { await sendByeRef.current?.({ from: myIdRef.current }) } catch { /* noop */ }
-    try { await presenceSendRef.current?.({ from: myIdRef.current, busy: false }) } catch { /* noop */ }
+    try { await presenceSendRef.current?.({ from: myIdRef.current, busy: false, country: myCountryRef.current, age: myAgeRef.current, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
     await cleanupPair(false)
     setMessages([{ from: "sys", text: "Buscando a alguien nuevo... 🔎", at: Date.now() }])
     setStatus("waiting")
@@ -442,7 +570,9 @@ export default function useVideoChat() {
 
   return {
     status, error, camOn, micOn,
-    peerCount, peerShortId, messages, typingPeer,
+    peerCount, peerShortId, peerCountry, peerAge, messages, typingPeer,
+    myCountry, myAge, filterCountry, filterAgeMin, filterAgeMax, MIN_AGE, MAX_AGE,
+    setMyCountry, setMyAge, setFilterCountry, setAgeRange,
     localVideoRef, remoteVideoRef,
     selfShortId: shortId(myIdRef.current),
     start, stop: stopAll, next, sendMessage, sendTyping,

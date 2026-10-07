@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { flagOf, nameOf } from "./countries.js"
 
 export default function VideoChat({ chat }) {
   const [input, setInput] = useState("")
@@ -25,7 +26,13 @@ export default function VideoChat({ chat }) {
           <p className="font-extrabold leading-tight">
             {connected ? `Conectado con @${chat.peerShortId}` : chat.status === "waiting" ? "Buscando a alguien… 🔎" : "Videochat aleatorio"}
           </p>
-          <p className="text-xs font-bold text-white/70">Tú eres @{chat.selfShortId} · <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 animate-pulse rounded-full bg-green-400" />{chat.peerCount} en línea ahora</span></p>
+          <p className="text-xs font-bold text-white/70">
+            Tú eres @{chat.selfShortId}{chat.myCountry !== "ANY" ? ` ${flagOf(chat.myCountry)}` : ""} · {chat.myAge} años ·{" "}
+            {connected && (chat.peerCountry || chat.peerAge != null) && (
+              <span>Otro: {chat.peerCountry ? `${flagOf(chat.peerCountry)} ${nameOf(chat.peerCountry)}` : "🌍"} {chat.peerAge != null ? `· ${chat.peerAge} años` : ""} · </span>
+            )}
+            <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 animate-pulse rounded-full bg-green-400" />{chat.peerCount} en línea ahora</span>
+          </p>
         </div>
         {!active && (
           <button onClick={chat.start} className="rounded-full bg-green-500 px-5 py-2 text-sm font-black text-white">▶ Empezar</button>
@@ -68,7 +75,7 @@ export default function VideoChat({ chat }) {
             </div>
           )}
           {connected && (
-            <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white">@{chat.peerShortId}</span>
+            <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white">@{chat.peerShortId}{chat.peerCountry ? ` ${flagOf(chat.peerCountry)}` : ""}{chat.peerAge != null ? ` · ${chat.peerAge}` : ""}</span>
           )}
         </div>
       </div>

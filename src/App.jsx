@@ -2,6 +2,7 @@ import { useState } from "react"
 import Header from "./components/Header.jsx"
 import Logo from "./components/Logo.jsx"
 import VideoChat from "./components/VideoChat.jsx"
+import FilterBar from "./components/FilterBar.jsx"
 import useVideoChat from "./hooks/useVideoChat.js"
 
 const FAQS = [
@@ -93,7 +94,8 @@ export default function App() {
         <section id="chat" className="border-y border-line bg-bg-muted py-16">
           <div className="mx-auto w-[min(1180px,92%)]">
             <h2 className="mt-2 text-3xl font-black sm:text-4xl">Videochat aleatorio real</h2>
-            <p className="mt-2 max-w-2xl text-ink-soft">Permite cámara y micro cuando el navegador lo pida.</p>
+            <p className="mt-2 max-w-2xl text-ink-soft">Permite cámara y micro cuando el navegador lo pida. Ajusta tu país y rango de edad (18–50) antes de empezar.</p>
+            <FilterBar chat={chat} />
             <VideoChat chat={chat} />
           </div>
         </section>
