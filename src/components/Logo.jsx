@@ -1,4 +1,4 @@
-/** Logo OmeTV reutilizable (ícono + texto) */
+/** Logo VibeChat reutilizable (ícono + texto) */
 export default function Logo({ light = false, size = 34 }) {
   return (
     <span className="flex items-center gap-2.5 font-black text-2xl">
@@ -10,7 +10,7 @@ export default function Logo({ light = false, size = 34 }) {
         />
       </svg>
       <span className={light ? "text-white" : "text-primary"}>
-        Ome<span className={light ? "text-[#7db9ff]" : "text-accent"}>TV</span>
+        Vibe<span className={light ? "text-[#7db9ff]" : "text-accent"}>Chat</span>
       </span>
     </span>
   )

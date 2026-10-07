@@ -5,7 +5,7 @@ import VideoChat from "./components/VideoChat.jsx"
 import useVideoChat from "./hooks/useVideoChat.js"
 
 const FAQS = [
-  { q: "¿OmeTV es gratis?", a: "Sí, el chat de vídeo aleatorio es 100% gratis, sin límite de tiempo y sin necesidad de registro." },
+  { q: "¿VibeChat es gratis?", a: "Sí, el chat de vídeo aleatorio es 100% gratis, sin límite de tiempo y sin necesidad de registro." },
   { q: "¿Necesito crear una cuenta?", a: "No. Entras, aceptas la cámara y empiezas a conocer gente al instante." },
   { q: "¿Funciona en el móvil?", a: "Sí, funciona en Chrome, Safari y Firefox tanto en Android como en iOS." },
   { q: "¿Cómo funciona el emparejamiento?", a: "Entras al lobby P2P y el sistema te empareja 1 a 1 con otra persona. Pulsa Siguiente para cambiar." },
@@ -150,7 +150,7 @@ export default function App() {
         </section>
       </main>
       <footer className="border-t border-line bg-bg-muted py-8 text-center text-sm font-semibold text-ink-soft">
-        <p>© 2026 OmeTV Video Chat — P2P real, sin bots 🔒</p>
+        <p>© 2026 VibeChat — P2P real, sin bots 🔒</p>
       </footer>
     </div>
   )

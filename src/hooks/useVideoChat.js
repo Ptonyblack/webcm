@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { joinRoom, selfId } from "trystero/nostr"
 
-const APP_ID = "webcm-ometv-v2"
+const APP_ID = "vibechat-p2p-v1"
 const LOBBY_ID = "lobby-global-v2"
 const PRESENCE_MS = 4000
 const PEER_TIMEOUT_MS = 12000

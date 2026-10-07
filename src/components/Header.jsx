@@ -38,7 +38,7 @@ export default function Header({ onStartChat }) {
       }`}
     >
       <div className="mx-auto flex h-[72px] w-[min(1180px,92%)] items-center justify-between gap-5">
-        <a href="#inicio" aria-label="OmeTV inicio" onClick={close}>
+        <a href="#inicio" aria-label="VibeChat inicio" onClick={close}>
           <Logo />
         </a>
 
