@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import Header from "./components/Header.jsx"
 import Logo from "./components/Logo.jsx"
 import VideoChat from "./components/VideoChat.jsx"
@@ -47,25 +47,30 @@ function scrollToChat() {
 export default function App() {
   const chat = useVideoChat()
   const [openFaq, setOpenFaq] = useState(0)
-  const [pendingStart, setPendingStart] = useState(false)
+  const pendingStartRef = useRef(false)
+  const chatRef = useRef(chat)
+  chatRef.current = chat
   const goFilters = () => {
     document.getElementById("filtros")?.scrollIntoView({ behavior: "smooth", block: "center" })
   }
+  const doStart = () => {
+    scrollToChat()
+    setTimeout(() => chatRef.current.start(), 400)
+  }
   const startAndGo = () => {
-    if (!chat.canStart()) {
-      chat.confirmProfile()
+    if (!chatRef.current.canStart()) {
+      pendingStartRef.current = true
+      chatRef.current.confirmProfile()
       goFilters()
-      setPendingStart(true)
       return
     }
-    scrollToChat()
-    setTimeout(() => chat.start(), 400)
+    pendingStartRef.current = false
+    doStart()
   }
   const onProfileConfirmed = () => {
-    if (!pendingStart) return
-    setPendingStart(false)
-    scrollToChat()
-    setTimeout(() => chat.start(), 400)
+    if (!pendingStartRef.current) return
+    pendingStartRef.current = false
+    doStart()
   }
   return (
     <div className="min-h-screen bg-white text-ink">
