@@ -59,8 +59,8 @@ export default function App() {
   }
   const startAndGo = () => {
     if (!chatRef.current.canStart()) {
+      // No confirmar aquí, dejar que FilterBar lo haga
       pendingStartRef.current = true
-      chatRef.current.confirmProfile()
       goFilters()
       return
     }
