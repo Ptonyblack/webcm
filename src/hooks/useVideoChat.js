@@ -28,11 +28,16 @@ function inAgeRange(age, min, max) {
 const RTC_CFG = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:global.stun.twilio.com:3478" },
+    // TURN UDP (rápido en PC) + TCP 443 (crucial en móviles con NAT/CG-NAT y redes que bloquean UDP)
     { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
     { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
     { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turns:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
   ],
+  // En redes móviles el gathering puede tardar: no cortar candidatos demasiado pronto
+  iceCandidatePoolSize: 4,
 }
 
 const ROOM_CFG = {
@@ -231,16 +236,34 @@ export default function useVideoChat() {
   }, [clearTimers])
   const startLocal = useCallback(async () => {
     if (localStreamRef.current) return localStreamRef.current
-    const stream = await navigator.mediaDevices.getUserMedia({
+    // 1) Intento ideal (PC + móviles modernos)
+    const ideal = {
       video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
-      audio: { echoCancellation: true, noiseSuppression: true },
-    })
-    localStreamRef.current = stream
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream
-      localVideoRef.current.play().catch(() => {})
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     }
-    return stream
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(ideal)
+      localStreamRef.current = stream
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream
+        localVideoRef.current.play().catch(() => {})
+      }
+      return stream
+    } catch (e) {
+      // 2) Fallback móvil/tablet: constraints simples (iOS Safari y Android antiguos fallan con width/height ideales)
+      if (e?.name !== "NotAllowedError" && e?.name !== "NotFoundError" && e?.name !== "SecurityError") {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+          localStreamRef.current = stream
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream
+            localVideoRef.current.play().catch(() => {})
+          }
+          return stream
+        } catch { /* cae al throw original */ }
+      }
+      throw e
+    }
   }, [])
 
   const attachRemote = useCallback((stream) => {
@@ -372,6 +395,7 @@ export default function useVideoChat() {
         }
       } catch { /* noop */ }
     }, 2500)
+    // En móvil (4G/CG-NAT) el ICE vía TURN tarda más: dar 25s antes de rendirse (antes 12s)
     setTimeout(() => {
       if (!partnerRef.current && statusRef.current === "waiting") {
         connectingRef.current = false
@@ -379,7 +403,7 @@ export default function useVideoChat() {
         if (pairRef.current === room) pairRef.current = null
         scheduleMatch()
       }
-    }, 12000)
+    }, 25000)
   }, [attachRemote, cleanupPair, markConnected, scheduleMatch])
 
   const start = useCallback(async () => {
@@ -402,11 +426,18 @@ export default function useVideoChat() {
       await startLocal()
     } catch (e) {
       setStatus("denied")
+      const ua = navigator.userAgent || ""
+      const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+      const isAndroid = /Android/.test(ua)
       setError(e?.name === "NotAllowedError"
-        ? "Permiso denegado: clic en el candado 🔒 del navegador, permite Cámara y Micrófono y pulsa Reintentar."
+        ? isIOS
+          ? "Permiso denegado en iPhone/iPad: ve a Ajustes → Safari → Cámara y Micrófono → Permitir, recarga con HTTPS y pulsa Reintentar."
+          : "Permiso denegado: toca el candado 🔒 del navegador, permite Cámara y Micrófono y pulsa Reintentar."
         : e?.name === "NotFoundError"
           ? "No se encontró cámara o micrófono en este dispositivo."
-          : "No se pudo acceder a la cámara/micro: " + (e?.message || e))
+          : e?.name === "OverconstrainedError" || e?.name === "ConstraintNotSatisfiedError"
+            ? "Tu cámara no acepta esos ajustes" + (isAndroid ? " (Android): prueba con Chrome actualizado." : " (iOS): abre en Safari con HTTPS.") + " Pulsa Reintentar."
+            : "No se pudo acceder a la cámara/micro: " + (e?.message || e))
       return
     }
     try {

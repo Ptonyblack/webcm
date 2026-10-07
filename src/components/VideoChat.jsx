@@ -50,6 +50,9 @@ export default function VideoChat({ chat }) {
         <div className="border-b border-line bg-red-50 px-5 py-3 text-sm font-bold text-red-700">
           ⚠️ {chat.error}{" "}
           <button onClick={chat.retry} className="ml-2 rounded-full bg-red-600 px-3 py-1 text-xs font-black text-white">Reintentar</button>
+          {/HTTPS/i.test(chat.error) && (
+            <p className="mt-1 text-xs font-semibold">📱 En móvil/tablet la cámara solo funciona con <b>https://</b> (Cloudflare Pages ya lo da). En local usa el PC con <b>localhost</b>.</p>
+          )}
         </div>
       )}
 
