@@ -1,22 +1,32 @@
 import { COUNTRIES, flagOf, nameOf } from "./countries.js"
 
 /**
- * Panel "Tu perfil + filtros" para VibeChat.
- * País con banderas y rango de edad 18–50. Se guarda en localStorage desde el hook.
+ * Panel "Tu perfil + filtros" para VibeChat (PASO OBLIGATORIO antes de Empezar).
+ * País con banderas y rango de edad 18–50. Sin completar no se abre la cámara.
  */
-export default function FilterBar({ chat }) {
-  const lo = Math.min(chat.filterAgeMin, chat.filterAgeMax)
-  const hi = Math.max(chat.filterAgeMin, chat.filterAgeMax)
+export default function FilterBar({ chat, onConfirmed }) {
+  const lo = chat.filterAgeMin === "" ? "" : Math.min(chat.filterAgeMin, chat.filterAgeMax === "" ? chat.filterAgeMin : chat.filterAgeMax)
+  const hi = chat.filterAgeMax === "" ? "" : Math.max(chat.filterAgeMin === "" ? chat.filterAgeMax : chat.filterAgeMin, chat.filterAgeMax)
 
-  const onMin = (e) => chat.setAgeRange(Number(e.target.value), hi)
-  const onMax = (e) => chat.setAgeRange(lo, Number(e.target.value))
+  const onMin = (e) => chat.setAgeRange(Number(e.target.value), hi === "" ? Number(e.target.value) : hi)
+  const onMax = (e) => chat.setAgeRange(lo === "" ? Number(e.target.value) : lo, Number(e.target.value))
+
+  const ready = chat.isProfileComplete()
+
+  const confirm = () => {
+    if (chat.confirmProfile()) onConfirmed?.()
+  }
+
+  const summary = lo === "" || hi === ""
+    ? "elige el rango de edad"
+    : `${lo}–${hi} años`
 
   return (
-    <div className="mx-auto mt-6 max-w-4xl rounded-3xl border border-line bg-white p-5 shadow-sm">
+    <div id="filtros" className="mx-auto mt-6 max-w-4xl rounded-3xl border border-line bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-lg font-black">🎯 Tu perfil y filtros</h3>
+        <h3 className="text-lg font-black">🎯 Tu perfil y filtros <span className="ml-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-black text-accent">obligatorio</span></h3>
         <p className="text-xs font-bold text-ink-soft">
-          Buscando: {chat.filterCountry === "ANY" ? "🌍 Todo el mundo" : `${flagOf(chat.filterCountry)} ${nameOf(chat.filterCountry)}`} · {lo}–{hi} años
+          Buscando: {chat.filterCountry === "ANY" ? "🌍 Todo el mundo" : `${flagOf(chat.filterCountry)} ${nameOf(chat.filterCountry)}`} · {summary}
         </p>
       </div>
 
@@ -25,24 +35,25 @@ export default function FilterBar({ chat }) {
           <p className="text-sm font-black text-ink">Tu país y edad</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <label className="flex flex-1 min-w-[160px] flex-col gap-1 text-xs font-bold text-ink-soft">
-              País (muestra tu {flagOf(chat.myCountry)})
+              Tu país * {chat.myCountry && chat.myCountry !== "ANY" ? `(muestras ${flagOf(chat.myCountry)})` : ""}
               <select
-                value={chat.myCountry}
+                value={chat.myCountry || ""}
                 onChange={(e) => chat.setMyCountry(e.target.value)}
                 className="rounded-xl border border-line bg-white px-3 py-2 text-sm font-bold text-ink outline-none"
               >
-                <option value="ANY">🌍 Sin país / no decir</option>
+                <option value="">— Elige tu país —</option>
                 {COUNTRIES.filter((c) => c.code !== "ANY").map((c) => (
                   <option key={c.code} value={c.code}>{c.flag} {c.name}</option>
                 ))}
               </select>
             </label>
             <label className="flex w-[120px] flex-col gap-1 text-xs font-bold text-ink-soft">
-              Tu edad
+              Tu edad *
               <input
                 type="number" min={chat.MIN_AGE} max={chat.MAX_AGE}
+                placeholder="18–50"
                 value={chat.myAge}
-                onChange={(e) => chat.setMyAge(e.target.value)}
+                onChange={(e) => chat.setMyAge(e.target.value === "" ? "" : Number(e.target.value))}
                 className="rounded-xl border border-line bg-white px-3 py-2 text-sm font-bold text-ink outline-none"
               />
             </label>
@@ -64,10 +75,10 @@ export default function FilterBar({ chat }) {
             </select>
           </label>
           <div className="mt-3">
-            <p className="text-xs font-bold text-ink-soft">Edad: {lo} – {hi} años</p>
+            <p className="text-xs font-bold text-ink-soft">Edad que buscas * {lo === "" || hi === "" ? "" : `: ${lo} – ${hi} años`}</p>
             <div className="mt-2 flex items-center gap-2">
-              <input type="range" min={chat.MIN_AGE} max={chat.MAX_AGE} value={lo} onChange={onMin} className="w-full accent-[#0b74e5]" aria-label="Edad mínima" />
-              <input type="range" min={chat.MIN_AGE} max={chat.MAX_AGE} value={hi} onChange={onMax} className="w-full accent-[#ff5a5f]" aria-label="Edad máxima" />
+              <input type="range" min={chat.MIN_AGE} max={chat.MAX_AGE} value={lo === "" ? chat.MIN_AGE : lo} onChange={onMin} className="w-full accent-[#0b74e5]" aria-label="Edad mínima" />
+              <input type="range" min={chat.MIN_AGE} max={chat.MAX_AGE} value={hi === "" ? chat.MAX_AGE : hi} onChange={onMax} className="w-full accent-[#ff5a5f]" aria-label="Edad máxima" />
             </div>
             <div className="mt-1 flex justify-between text-[11px] font-bold text-ink-soft">
               <span>18</span><span>50</span>
@@ -76,8 +87,19 @@ export default function FilterBar({ chat }) {
         </div>
       </div>
 
+      {chat.profileError && (
+        <p className="mt-3 rounded-xl bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700">⚠️ {chat.profileError}</p>
+      )}
+
+      <button
+        onClick={confirm}
+        className={`mt-4 w-full rounded-full px-6 py-3 text-base font-black text-white transition ${ready ? "bg-green-500 hover:bg-green-600" : "bg-primary hover:bg-primary-dark"}`}
+      >
+        {chat.profileDone ? "✅ Perfil listo — puedes pulsar Empezar" : "✔ Confirmar mi perfil y filtros"}
+      </button>
+
       <p className="mt-3 text-xs font-semibold text-ink-soft">
-        💡 El emparejamiento es mutuo: solo te conecta con quien también encaje con tu país y edad.
+        🔒 Sin confirmar este paso no se activa la cámara. El emparejamiento es mutuo: solo te conecta con quien también encaje con tu país y edad.
       </p>
     </div>
   )

@@ -66,20 +66,36 @@ export default function useVideoChat() {
   const [peerShortId, setPeerShortId] = useState("")
   const [messages, setMessages] = useState([])
   const [typingPeer, setTypingPeer] = useState(false)
+  const [profileDone, setProfileDone] = useState(() => {
+    try { return localStorage.getItem("vibechat-profile-done") === "1" } catch { return false }
+  })
+  const [profileError, setProfileError] = useState("")
   const [myCountry, setMyCountryState] = useState(() => {
-    try { return normCountry(localStorage.getItem("vibechat-country"), "ANY") } catch { return "ANY" }
+    try { return normCountry(localStorage.getItem("vibechat-country"), "") } catch { return "" }
   })
   const [myAge, setMyAgeState] = useState(() => {
-    try { return clampAge(localStorage.getItem("vibechat-age"), 25) } catch { return 25 }
+    try {
+      const raw = localStorage.getItem("vibechat-age")
+      if (raw == null || raw === "") return ""
+      return clampAge(raw, "")
+    } catch { return "" }
   })
   const [filterCountry, setFilterCountryState] = useState(() => {
     try { return normCountry(localStorage.getItem("vibechat-filter-country"), "ANY") } catch { return "ANY" }
   })
   const [filterAgeMin, setFilterAgeMinState] = useState(() => {
-    try { return clampAge(localStorage.getItem("vibechat-filter-min"), MIN_AGE, MIN_AGE) } catch { return MIN_AGE }
+    try {
+      const raw = localStorage.getItem("vibechat-filter-min")
+      if (raw == null || raw === "") return ""
+      return clampAge(raw, "")
+    } catch { return "" }
   })
   const [filterAgeMax, setFilterAgeMaxState] = useState(() => {
-    try { return clampAge(localStorage.getItem("vibechat-filter-max"), MAX_AGE, MAX_AGE) } catch { return MAX_AGE }
+    try {
+      const raw = localStorage.getItem("vibechat-filter-max")
+      if (raw == null || raw === "") return ""
+      return clampAge(raw, "")
+    } catch { return "" }
   })
   const [peerCountry, setPeerCountry] = useState("")
   const [peerAge, setPeerAge] = useState(null)
@@ -139,38 +155,91 @@ export default function useVideoChat() {
   }, [])
 
   const setMyCountry = useCallback((v) => {
-    const c = normCountry(v, "ANY")
+    const c = normCountry(v, "")
     setMyCountryState(c)
-    try { localStorage.setItem("vibechat-country", c) } catch { /* noop */ }
-    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: c, age: myAgeRef.current, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
+    setProfileDone(false)
+    setProfileError("")
+    try {
+      if (c) localStorage.setItem("vibechat-country", c)
+      else localStorage.removeItem("vibechat-country")
+      localStorage.removeItem("vibechat-profile-done")
+    } catch { /* noop */ }
+    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: c || "ANY", age: Number(myAgeRef.current) || null, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
   }, [])
 
   const setMyAge = useCallback((v) => {
-    const a = clampAge(v, 25)
+    if (v === "" || v == null) {
+      setMyAgeState("")
+      setProfileDone(false)
+      setProfileError("")
+      try { localStorage.removeItem("vibechat-age"); localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+      return
+    }
+    const a = clampAge(v, "")
     setMyAgeState(a)
-    try { localStorage.setItem("vibechat-age", String(a)) } catch { /* noop */ }
-    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current, age: a, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
+    setProfileDone(false)
+    setProfileError("")
+    try { localStorage.setItem("vibechat-age", String(a)); localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: a, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
   }, [])
 
   const setFilterCountry = useCallback((v) => {
     const c = normCountry(v, "ANY")
     setFilterCountryState(c)
-    try { localStorage.setItem("vibechat-filter-country", c) } catch { /* noop */ }
-    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current, age: myAgeRef.current, wantCountry: c, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
+    setProfileDone(false)
+    setProfileError("")
+    try { localStorage.setItem("vibechat-filter-country", c); localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: Number(myAgeRef.current) || null, wantCountry: c, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
     scheduleMatchRef.current?.()
   }, [])
 
   const setAgeRange = useCallback((min, max) => {
-    const lo = clampAge(min, MIN_AGE)
-    const hi = clampAge(max, MAX_AGE)
+    if (min === "" || min == null || max === "" || max == null) {
+      setFilterAgeMinState(min === "" ? "" : clampAge(min, ""))
+      setFilterAgeMaxState(max === "" ? "" : clampAge(max, ""))
+      setProfileDone(false)
+      setProfileError("")
+      try { localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+      return
+    }
+    const lo = clampAge(min, "")
+    const hi = clampAge(max, "")
     const a = Math.min(lo, hi)
     const b = Math.max(lo, hi)
     setFilterAgeMinState(a)
     setFilterAgeMaxState(b)
-    try { localStorage.setItem("vibechat-filter-min", String(a)); localStorage.setItem("vibechat-filter-max", String(b)) } catch { /* noop */ }
-    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current, age: myAgeRef.current, wantCountry: filterCountryRef.current, wantMin: a, wantMax: b }) } catch { /* noop */ }
+    setProfileDone(false)
+    setProfileError("")
+    try { localStorage.setItem("vibechat-filter-min", String(a)); localStorage.setItem("vibechat-filter-max", String(b)); localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: Number(myAgeRef.current) || null, wantCountry: filterCountryRef.current, wantMin: a, wantMax: b }) } catch { /* noop */ }
     scheduleMatchRef.current?.()
   }, [])
+
+  const profileIssues = useCallback(() => {
+    const issues = []
+    if (!myCountry || myCountry === "ANY") issues.push("tu país")
+    if (myAge === "" || myAge == null || Number(myAge) < MIN_AGE || Number(myAge) > MAX_AGE) issues.push("tu edad (18–50)")
+    if (filterAgeMin === "" || filterAgeMax === "" || filterAgeMin == null || filterAgeMax == null) issues.push("el rango de edad que buscas")
+    return issues
+  }, [myCountry, myAge, filterAgeMin, filterAgeMax])
+
+  const isProfileComplete = useCallback(() => profileIssues().length === 0, [profileIssues])
+
+  const confirmProfile = useCallback(() => {
+    const issues = profileIssues()
+    if (issues.length > 0) {
+      setProfileError("Completa tu perfil para empezar: falta " + issues.join(", ") + ".")
+      setProfileDone(false)
+      try { localStorage.removeItem("vibechat-profile-done") } catch { /* noop */ }
+      document.getElementById("filtros")?.scrollIntoView({ behavior: "smooth", block: "center" })
+      return false
+    }
+    setProfileError("")
+    setProfileDone(true)
+    try { localStorage.setItem("vibechat-profile-done", "1") } catch { /* noop */ }
+    try { presenceSendRef.current?.({ from: myIdRef.current, busy: Boolean(partnerRef.current || connectingRef.current), country: myCountryRef.current || "ANY", age: Number(myAgeRef.current) || null, wantCountry: filterCountryRef.current, wantMin: filterAgeMinRef.current, wantMax: filterAgeMaxRef.current }) } catch { /* noop */ }
+    return true
+  }, [profileIssues])
 
   function isCompatibleWith(peerId) {
     if (!peerId || peerId === myIdRef.current) return false
@@ -409,6 +478,11 @@ export default function useVideoChat() {
   const start = useCallback(async () => {
     const st = statusRef.current
     if (st === "starting" || st === "connected" || st === "waiting") return
+    if (!isProfileComplete()) {
+      confirmProfile()
+      setStatus("idle")
+      return
+    }
     setStatus("starting")
     setError("")
     setMessages([])
@@ -603,6 +677,7 @@ export default function useVideoChat() {
     status, error, camOn, micOn,
     peerCount, peerShortId, peerCountry, peerAge, messages, typingPeer,
     myCountry, myAge, filterCountry, filterAgeMin, filterAgeMax, MIN_AGE, MAX_AGE,
+    profileDone, profileError, isProfileComplete, confirmProfile,
     setMyCountry, setMyAge, setFilterCountry, setAgeRange,
     localVideoRef, remoteVideoRef,
     selfShortId: shortId(myIdRef.current),

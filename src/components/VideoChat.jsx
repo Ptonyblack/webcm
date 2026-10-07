@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState } from "react"
 import { flagOf, nameOf } from "./countries.js"
 
-export default function VideoChat({ chat }) {
+export default function VideoChat({ chat, onNeedProfile }) {
   const [input, setInput] = useState("")
   const scrollRef = useRef(null)
   const connected = chat.status === "connected"
   const active = chat.status === "starting" || chat.status === "waiting" || connected
+
+  const gatedStart = () => {
+    if (!chat.isProfileComplete()) {
+      chat.confirmProfile()
+      onNeedProfile?.()
+      return
+    }
+    chat.start()
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 99999, behavior: "smooth" })
@@ -27,7 +36,7 @@ export default function VideoChat({ chat }) {
             {connected ? `Conectado con @${chat.peerShortId}` : chat.status === "waiting" ? "Buscando a alguien… 🔎" : "Videochat aleatorio"}
           </p>
           <p className="text-xs font-bold text-white/70">
-            Tú eres @{chat.selfShortId}{chat.myCountry !== "ANY" ? ` ${flagOf(chat.myCountry)}` : ""} · {chat.myAge} años ·{" "}
+            Tú eres @{chat.selfShortId}{chat.myCountry && chat.myCountry !== "ANY" ? ` ${flagOf(chat.myCountry)}` : ""} · {chat.myAge === "" ? "edad sin definir" : `${chat.myAge} años`} ·{" "}
             {connected && (chat.peerCountry || chat.peerAge != null) && (
               <span>Otro: {chat.peerCountry ? `${flagOf(chat.peerCountry)} ${nameOf(chat.peerCountry)}` : "🌍"} {chat.peerAge != null ? `· ${chat.peerAge} años` : ""} · </span>
             )}
@@ -35,7 +44,7 @@ export default function VideoChat({ chat }) {
           </p>
         </div>
         {!active && (
-          <button onClick={chat.start} className="rounded-full bg-green-500 px-5 py-2 text-sm font-black text-white">▶ Empezar</button>
+          <button onClick={gatedStart} className="rounded-full bg-green-500 px-5 py-2 text-sm font-black text-white">▶ Empezar</button>
         )}
         {active && (
           <div className="flex gap-2">
@@ -46,6 +55,12 @@ export default function VideoChat({ chat }) {
           </div>
         )}
       </div>
+      {chat.profileError && !active && (
+        <div className="border-b border-line bg-amber-50 px-5 py-3 text-sm font-bold text-amber-800">
+          ⚠️ {chat.profileError}{" "}
+          <button onClick={() => onNeedProfile?.()} className="ml-2 rounded-full bg-amber-500 px-3 py-1 text-xs font-black text-white">Completar perfil</button>
+        </div>
+      )}
       {chat.error && (
         <div className="border-b border-line bg-red-50 px-5 py-3 text-sm font-bold text-red-700">
           ⚠️ {chat.error}{" "}

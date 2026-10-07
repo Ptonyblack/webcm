@@ -43,7 +43,23 @@ function scrollToChat() {
 export default function App() {
   const chat = useVideoChat()
   const [openFaq, setOpenFaq] = useState(0)
+  const [pendingStart, setPendingStart] = useState(false)
+  const goFilters = () => {
+    document.getElementById("filtros")?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }
   const startAndGo = () => {
+    if (!chat.isProfileComplete()) {
+      chat.confirmProfile()
+      goFilters()
+      setPendingStart(true)
+      return
+    }
+    scrollToChat()
+    setTimeout(() => chat.start(), 400)
+  }
+  const onProfileConfirmed = () => {
+    if (!pendingStart) return
+    setPendingStart(false)
     scrollToChat()
     setTimeout(() => chat.start(), 400)
   }
@@ -94,9 +110,9 @@ export default function App() {
         <section id="chat" className="border-y border-line bg-bg-muted py-16">
           <div className="mx-auto w-[min(1180px,92%)]">
             <h2 className="mt-2 text-3xl font-black sm:text-4xl">Videochat aleatorio real</h2>
-            <p className="mt-2 max-w-2xl text-ink-soft">Permite cámara y micro cuando el navegador lo pida. Ajusta tu país y rango de edad (18–50) antes de empezar.</p>
-            <FilterBar chat={chat} />
-            <VideoChat chat={chat} />
+            <p className="mt-2 max-w-2xl text-ink-soft">Paso 1: completa tu país y rango de edad (18–50). Paso 2: confirma y pulsa Empezar para activar la cámara.</p>
+            <FilterBar chat={chat} onConfirmed={onProfileConfirmed} />
+            <VideoChat chat={chat} onNeedProfile={goFilters} />
           </div>
         </section>
 
