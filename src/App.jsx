@@ -1,4 +1,6 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import PremiumModal from "./components/PremiumModal.jsx"
+import { resolveHandle, isPremium, getPremiumUntil, getOrCreateDeviceId } from "./lib/identity.js"
 import Header from "./components/Header.jsx"
 import Logo from "./components/Logo.jsx"
 import VideoChat from "./components/VideoChat.jsx"
@@ -47,6 +49,20 @@ function scrollToChat() {
 export default function App() {
   const chat = useVideoChat()
   const [openFaq, setOpenFaq] = useState(0)
+  const [myHandle, setMyHandle] = useState("")
+  const [premium, setPremium] = useState(false)
+  const [showPremium, setShowPremium] = useState(false)
+  useEffect(() => {
+    getOrCreateDeviceId()
+    const r = resolveHandle()
+    setMyHandle(r.handle)
+    setPremium(isPremium())
+  }, [])
+  const refreshPremium = () => {
+    const r = resolveHandle()
+    setMyHandle(r.handle)
+    setPremium(isPremium())
+  }
   const canStart = chat.canStart()
   const goFilters = () => {
     document.getElementById("filtros")?.scrollIntoView({ behavior: "smooth", block: "center" })
@@ -99,6 +115,10 @@ export default function App() {
                 <span className="inline-flex items-center gap-1.5"><IconCheckCircle className="h-4 w-4 text-green-500" /> Gratis, sin registro</span>
                 <span className="inline-flex items-center gap-1.5"><IconCheckCircle className="h-4 w-4 text-green-500" /> P2P cifrado</span>
                 <span className="inline-flex items-center gap-1.5"><IconCheckCircle className="h-4 w-4 text-green-500" /> Móvil y PC</span>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-4 py-2 text-sm font-black">Tú eres {myHandle || "…"} {premium && <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[11px] text-black">PREMIUM</span>}</span>
+                {!premium && <button onClick={() => setShowPremium(true)} className="rounded-full bg-dark px-4 py-2 text-sm font-black text-white hover:brightness-125">Conservar {myHandle} — 10 USDT/mes</button>}
               </div>
             </div>
             <div className="overflow-hidden rounded-3xl border border-line bg-dark shadow-xl">
@@ -215,6 +235,7 @@ export default function App() {
       <footer className="border-t border-line bg-bg-muted py-8 text-center text-sm font-semibold text-ink-soft">
         <p className="inline-flex items-center gap-2"><IconLock className="h-4 w-4" /> © 2026 VibeChat — P2P real, sin bots</p>
       </footer>
+      {showPremium && <PremiumModal handle={myHandle} onClose={() => setShowPremium(false)} onActivated={refreshPremium} />}
     </div>
   )
 }
