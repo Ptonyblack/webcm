@@ -8,6 +8,30 @@ const PEER_TIMEOUT_MS = 12000
 const MIN_AGE = 18
 const MAX_AGE = 50
 
+// ?debug=1 en la URL muestra panel de diagnóstico (útil en móvil real + Pages)
+function isDebug() {
+  try {
+    return new URLSearchParams(location.search).has("debug") || localStorage.getItem("vibechat-debug") === "1"
+  } catch { return false }
+}
+
+function dbg(...args) {
+  if (!isDebug()) return
+  try { console.log("[vibechat]", ...args) } catch { /* noop */ }
+}
+
+function isLocalNetworkHost() {
+  const h = (location?.hostname || "").toLowerCase()
+  if (!h || h === "localhost" || h === "127.0.0.1" || h === "::1") return true
+  if (/^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || /^169\.254\./.test(h)) return true
+  return false
+}
+
+function isMobileDevice() {
+  const ua = navigator.userAgent || ""
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+}
+
 function clampAge(v, fallback = 25) {
   const n = Number(v)
   if (!Number.isFinite(n)) return fallback
@@ -98,6 +122,26 @@ export default function useVideoChat() {
   })
   const [peerCountry, setPeerCountry] = useState("")
   const [peerAge, setPeerAge] = useState(null)
+  const [diag, setDiag] = useState(() => ({
+    debug: isDebug(),
+    secure: false,
+    host: "",
+    proto: "",
+    mobile: false,
+    ua: "",
+    hasMedia: false,
+    lobby: "idle",
+    pair: "idle",
+    ice: "idle",
+    lastLog: "",
+  }))
+  const diagLogsRef = useRef([])
+  const logDiag = useCallback((msg) => {
+    const line = `[${new Date().toLocaleTimeString()}] ${msg}`
+    diagLogsRef.current = [...diagLogsRef.current, line].slice(-30)
+    setDiag((d) => ({ ...d, lastLog: line }))
+    dbg(msg)
+  }, [])
 
   const localStreamRef = useRef(null)
   const localVideoRef = useRef(null)
@@ -355,8 +399,10 @@ export default function useVideoChat() {
     try {
       remoteVideoRef.current.srcObject = stream
       remoteVideoRef.current.play().catch(() => {})
+      setDiag((d) => ({ ...d, pair: "stream-recv" }))
+      logDiag("track remoto recibido -> video attached")
     } catch { /* noop */ }
-  }, [])
+  }, [logDiag])
 
   const scheduleMatchRef = useRef(null)
 
@@ -367,13 +413,15 @@ export default function useVideoChat() {
     busyRef.current.delete(peerId)
     partnerRef.current = peerId
     setPeerShortId(shortId(peerId))
+    logDiag(`MATCH conectado con @${shortId(peerId)}`)
+    setDiag((d) => ({ ...d, pair: "connected" }))
     const p = profileRef.current.get(peerId)
     setPeerCountry(p?.country && p.country !== "ANY" ? p.country : "")
     setPeerAge(Number.isFinite(p?.age) ? p.age : null)
     setStatus("connected")
     setError("")
     setMessages([{ from: "sys", text: "Conectado con @" + shortId(peerId) + ". ¡Di hola!", at: Date.now() }])
-  }, [])
+  }, [logDiag])
 
   const tryMatchRef = useRef(null)
 
@@ -415,6 +463,8 @@ export default function useVideoChat() {
     if (pairRef.current || connectingRef.current || !localStreamRef.current) return
     if (!pairId || typeof pairId !== "string") return
     connectingRef.current = true
+    logDiag(`ICE abriendo pair ${String(pairId).slice(0, 18)}... -> ${shortId(targetPeerId)}`)
+    setDiag((d) => ({ ...d, pair: "connecting", ice: "gathering" }))
     const stream = localStreamRef.current
     let room
     try {
@@ -482,12 +532,14 @@ export default function useVideoChat() {
     // En móvil (4G/CG-NAT) el ICE vía TURN tarda más: dar 25s antes de rendirse (antes 12s)
     setTimeout(() => {
       if (!partnerRef.current && statusRef.current === "waiting") {
+        logDiag("ICE timeout sin partner -> reintentando match (posible NAT/TURN bloqueado)")
+        setDiag((d) => ({ ...d, pair: "timeout", ice: "timeout" }))
         connectingRef.current = false
         try { room.leave() } catch { /* noop */ }
         if (pairRef.current === room) pairRef.current = null
         scheduleMatch()
       }
-    }, 25000)
+    }, isMobileDevice() ? 45000 : 25000)
   }, [attachRemote, cleanupPair, markConnected, scheduleMatch])
 
   const start = useCallback(async () => {
@@ -503,20 +555,38 @@ export default function useVideoChat() {
     setStatus("starting")
     setError("")
     setMessages([])
+    try {
+      setDiag((d) => ({
+        ...d,
+        secure: Boolean(window.isSecureContext),
+        host: location.hostname || "",
+        proto: location.protocol || "",
+        mobile: isMobileDevice(),
+        ua: (navigator.userAgent || "").slice(0, 90),
+        hasMedia: Boolean(navigator.mediaDevices?.getUserMedia),
+      }))
+    } catch { /* noop */ }
+    logDiag(`start secure=${String(window.isSecureContext)} host=${location.hostname} proto=${location.protocol} mobile=${String(isMobileDevice())} hasMedia=${String(Boolean(navigator.mediaDevices?.getUserMedia))}`)
     if (!navigator.mediaDevices?.getUserMedia) {
       setStatus("error")
       setError("Tu navegador no soporta cámara/micro. Usa Chrome, Edge o Firefox actualizado.")
+      logDiag("ERROR no-mediaDevices.getUserMedia")
       return
     }
-    if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    const secureAllowed = window.isSecureContext || isLocalNetworkHost()
+    if (!secureAllowed) {
       setStatus("error")
       setError("La cámara requiere HTTPS. En local funciona, online necesitas https://.")
+      logDiag("ERROR no-secure-context (requiere https)")
       return
     }
     try {
       await startLocal()
+      logDiag("camara local OK")
+      setDiag((d) => ({ ...d, lobby: "cam-ok" }))
     } catch (e) {
       setStatus("denied")
+      logDiag(`ERROR getUserMedia ${e?.name || "?"}: ${e?.message || e}`)
       const ua = navigator.userAgent || ""
       const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
       const isAndroid = /Android/.test(ua)
@@ -534,6 +604,8 @@ export default function useVideoChat() {
     try {
       const lobby = joinRoom(ROOM_CFG, LOBBY_ID)
       lobbyRef.current = lobby
+      logDiag(`lobby join ${LOBBY_ID} ok, conectando a relays nostr...`)
+      setDiag((d) => ({ ...d, lobby: "joining" }))
       const presenceAction = lobby.makeAction("presence")
       const reqAction = lobby.makeAction("req")
       const ackAction = lobby.makeAction("ack")
@@ -543,10 +615,18 @@ export default function useVideoChat() {
       ackSendRef.current = (data, opts) => ackAction.send(data, opts)
       const noteSeen = (id) => {
         if (!id || id === myIdRef.current) return
+        const first = !seenRef.current.has(id)
         seenRef.current.set(id, Date.now())
         refreshCount()
+        if (first) {
+          logDiag(`peer visto en lobby @${shortId(id)} (total ${seenRef.current.size})`)
+          setDiag((d) => ({ ...d, lobby: `peers:${seenRef.current.size}` }))
+        }
       }
-      lobby.onPeerJoin = (id) => noteSeen(id)
+      lobby.onPeerJoin = (id) => {
+        noteSeen(id)
+        logDiag(`onPeerJoin @${shortId(id)}`)
+      }
       lobby.onPeerLeave = (id) => {
         seenRef.current.delete(id)
         busyRef.current.delete(id)
@@ -627,12 +707,15 @@ export default function useVideoChat() {
       setStatus("waiting")
       refreshCount()
       pushMsg("sys", "En el lobby, buscando a alguien real...")
+      logDiag("en lobby waiting, programando match...")
       scheduleMatch()
     } catch (e) {
       setStatus("error")
       setError("No se pudo conectar a la red P2P: " + (e?.message || e))
+      logDiag(`ERROR lobby/P2P: ${e?.message || e}`)
+      setDiag((d) => ({ ...d, lobby: "error" }))
     }
-  }, [confirmProfile, openPair, profileIssues, pushMsg, refreshCount, scheduleMatch, startLocal])
+  }, [confirmProfile, openPair, profileIssues, pushMsg, refreshCount, scheduleMatch, startLocal, logDiag])
 
   const next = useCallback(async () => {
     const st = statusRef.current
@@ -698,6 +781,7 @@ export default function useVideoChat() {
     setMyCountry, setMyAge, setFilterCountry, setAgeRange,
     localVideoRef, remoteVideoRef,
     selfShortId: shortId(myIdRef.current),
+    diag, diagLogs: diagLogsRef.current, logDiag, setDiag,
     start, stop: stopAll, next, sendMessage, sendTyping,
     toggleCam, toggleMic, retry: start,
   }

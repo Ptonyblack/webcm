@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
 import Logo from "./Logo.jsx"
 import { NAV_LINKS } from "./navLinks.js"
+import { useSettings } from "../lib/settings.jsx"
 
 export default function Header({ onStartChat }) {
+  const { lang, setLang, theme, toggleTheme, t } = useSettings()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState("#inicio")
@@ -60,9 +62,46 @@ export default function Header({ onStartChat }) {
             onClick={onStartChat}
             className="ml-1 rounded-full bg-primary px-4 py-2 text-[.95rem] font-bold text-white transition hover:bg-primary-dark"
           >
-            Empezar chat
+            {t.nav.start}
           </button>
         </nav>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-full border border-line bg-bg-muted p-0.5">
+            <button
+              onClick={() => setLang("es")}
+              aria-label="Español"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-black transition"
+              style={{ backgroundColor: lang === "es" ? "var(--color-primary)" : "transparent", color: lang === "es" ? "white" : "var(--color-ink-soft)" }}
+            >
+              ES
+            </button>
+            <button
+              onClick={() => setLang("en")}
+              aria-label="English"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-black transition"
+              style={{ backgroundColor: lang === "en" ? "var(--color-primary)" : "transparent", color: lang === "en" ? "white" : "var(--color-ink-soft)" }}
+            >
+              EN
+            </button>
+          </div>
+          <button
+            onClick={toggleTheme}
+            aria-label={theme === "dark" ? t.settings.themeLight : t.settings.themeDark}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-bg-muted text-ink-soft transition hover:bg-primary hover:text-white"
+          >
+            {theme === "dark" ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              </svg>
+            )}
+          </button>
+        </div>
 
         <button
           className="flex flex-col gap-[5px] p-2 lg:hidden"

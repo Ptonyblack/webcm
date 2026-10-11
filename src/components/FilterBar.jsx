@@ -43,7 +43,7 @@ export default function FilterBar({ chat }) {
           <p className="flex items-center gap-2 text-sm font-black text-ink"><IconPin className="h-4 w-4 text-primary" /> Tu país y edad</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <label className="flex flex-1 min-w-[160px] flex-col gap-1 text-xs font-bold text-ink-soft">
-              Tu país * {chat.myCountry && chat.myCountry !== "ANY" ? `(muestras ${flagOf(chat.myCountry)})` : ""}
+              Tu país *
               <select
                 value={chat.myCountry || ""}
                 onChange={(e) => chat.setMyCountry(e.target.value)}
@@ -71,7 +71,7 @@ export default function FilterBar({ chat }) {
         <div className="rounded-2xl border border-line bg-bg-muted p-4">
           <p className="flex items-center gap-2 text-sm font-black text-ink"><IconUsers className="h-4 w-4 text-primary" /> ¿A quién quieres conocer?</p>
           <label className="mt-3 flex flex-col gap-1 text-xs font-bold text-ink-soft">
-            País del otro
+          País del otro (solo para filtrar, no se muestra a nadie)
             <select
               value={chat.filterCountry}
               onChange={(e) => chat.setFilterCountry(e.target.value)}
@@ -110,7 +110,7 @@ export default function FilterBar({ chat }) {
 
         <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
           <IconLock className="h-4 w-4 shrink-0" />
-          Sin confirmar este paso no se activa la cámara. El emparejamiento es mutuo: solo te conecta con quien también encaje con tu país y edad.
+          Sin confirmar este paso no se activa la cámara. El emparejamiento es mutuo: solo te conecta con quien también encaje con tu país y edad. Los países nunca se muestran: solo se usan en privado para filtrar.
         </p>
       </div>
     </div>

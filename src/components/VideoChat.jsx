@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react"
-import { flagOf, nameOf } from "./countries.js"
 import {
   IconVideo, IconVideoOff, IconMic, IconMicOff, IconPlay,
   IconNext, IconStop, IconSend, IconAlert, IconCheckCircle, IconUsers,
@@ -42,9 +41,9 @@ export default function VideoChat({ chat, onNeedProfile }) {
             {connected ? `Conectado con @${chat.peerShortId}` : chat.status === "waiting" ? "Buscando a alguien…" : "Videochat aleatorio"}
           </p>
           <p className="text-xs font-bold text-white/70">
-            Tú eres @{chat.selfShortId}{chat.myCountry && chat.myCountry !== "ANY" ? ` ${flagOf(chat.myCountry)}` : ""} · {chat.myAge === "" ? "edad sin definir" : `${chat.myAge} años`} ·{" "}
-            {connected && (chat.peerCountry || chat.peerAge != null) && (
-              <span>Otro: {chat.peerCountry ? `${flagOf(chat.peerCountry)} ${nameOf(chat.peerCountry)}` : ""} {chat.peerAge != null ? `· ${chat.peerAge} años` : ""} · </span>
+            Tú eres @{chat.selfShortId} · {chat.myAge === "" ? "edad sin definir" : `${chat.myAge} años`} ·{" "}
+            {connected && chat.peerAge != null && (
+              <span>Otro: {chat.peerAge} años · </span>
             )}
             <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 animate-pulse rounded-full bg-green-400" />{chat.peerCount} en línea ahora</span>
           </p>
@@ -87,6 +86,21 @@ export default function VideoChat({ chat, onNeedProfile }) {
           )}
         </div>
       )}
+      {chat.diag?.debug && (
+        <div className="border-b border-line bg-slate-900 px-4 py-3 font-mono text-[11px] leading-relaxed text-green-300">
+          <p className="font-black text-white">DIAG ?debug=1 — copia esto si falla móvil-PC</p>
+          <p>secure={String(chat.diag.secure)} host={chat.diag.host} proto={chat.diag.proto} mobile={String(chat.diag.mobile)}</p>
+          <p>hasMedia={String(chat.diag.hasMedia)} status={chat.status} lobby={chat.diag.lobby} pair={chat.diag.pair} ice={chat.diag.ice} peers={chat.peerCount}</p>
+          <p className="break-all text-white/70">ua: {chat.diag.ua}</p>
+          {chat.diag.lastLog && <p className="text-yellow-300">último: {chat.diag.lastLog}</p>}
+          <details>
+            <summary className="cursor-pointer text-white">ver últimos logs ({(chat.diagLogs || []).length})</summary>
+            <div className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap break-all">
+              {(chat.diagLogs || []).join("\n")}
+            </div>
+          </details>
+        </div>
+      )}
 
       <div className="grid gap-2 bg-black p-3 sm:grid-cols-2">
         <div className="relative overflow-hidden rounded-2xl bg-[#16283f]">
@@ -116,7 +130,7 @@ export default function VideoChat({ chat, onNeedProfile }) {
             </div>
           )}
           {connected && (
-            <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white">@{chat.peerShortId}{chat.peerCountry ? ` ${flagOf(chat.peerCountry)}` : ""}{chat.peerAge != null ? ` · ${chat.peerAge}` : ""}</span>
+            <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white">@{chat.peerShortId}{chat.peerAge != null ? ` · ${chat.peerAge}` : ""}</span>
           )}
         </div>
       </div>
