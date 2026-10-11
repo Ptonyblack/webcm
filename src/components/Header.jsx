@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
 import Logo from "./Logo.jsx"
-import { NAV_LINKS } from "./navLinks.js"
 import { useSettings } from "../lib/settings.jsx"
 
 export default function Header({ onStartChat }) {
   const { lang, setLang, theme, toggleTheme, t } = useSettings()
+  const NAV_LINKS = t.links
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState("#inicio")
@@ -35,7 +35,7 @@ export default function Header({ onStartChat }) {
 
   return (
     <header
-      className={`sticky top-0 z-50 border-b border-line bg-white/90 backdrop-blur-md transition-shadow ${
+      className={`sticky top-0 z-50 border-b border-line bg-white/90 backdrop-blur-md transition-shadow dark:border-white/10 dark:bg-[#0b1422]/90 ${
         scrolled ? "shadow-[0_6px_24px_rgba(18,32,51,.08)]" : ""
       }`}
     >
@@ -51,8 +51,8 @@ export default function Header({ onStartChat }) {
               href={l.href}
               className={`rounded-full px-3.5 py-2 text-[.95rem] font-bold transition ${
                 active === l.href
-                  ? "bg-primary-light text-primary"
-                  : "text-ink-soft hover:bg-primary-light hover:text-primary"
+                  ? "bg-primary-light text-primary dark:bg-white/10 dark:text-white"
+                  : "text-ink-soft hover:bg-primary-light hover:text-primary dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
               }`}
             >
               {l.label}
@@ -67,7 +67,7 @@ export default function Header({ onStartChat }) {
         </nav>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-full border border-line bg-bg-muted p-0.5">
+          <div className="flex items-center gap-1 rounded-full border border-line bg-bg-muted p-0.5 dark:border-white/10 dark:bg-white/10">
             <button
               onClick={() => setLang("es")}
               aria-label="Español"
@@ -88,7 +88,8 @@ export default function Header({ onStartChat }) {
           <button
             onClick={toggleTheme}
             aria-label={theme === "dark" ? t.settings.themeLight : t.settings.themeDark}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-bg-muted text-ink-soft transition hover:bg-primary hover:text-white"
+            title={t.settings.toggleTheme}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-bg-muted text-ink-soft transition hover:bg-primary hover:text-white dark:border-white/10 dark:bg-white/10 dark:text-slate-200"
           >
             {theme === "dark" ? (
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
@@ -105,18 +106,18 @@ export default function Header({ onStartChat }) {
 
         <button
           className="flex flex-col gap-[5px] p-2 lg:hidden"
-          aria-label="Abrir menú"
+          aria-label={t.nav.openMenu}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
           <span
-            className={`h-[3px] w-[26px] rounded bg-ink transition ${
+            className={`h-[3px] w-[26px] rounded bg-ink transition dark:bg-white ${
               open ? "translate-y-[8px] rotate-45" : ""
             }`}
           />
-          <span className={`h-[3px] w-[26px] rounded bg-ink transition ${open ? "opacity-0" : ""}`} />
+          <span className={`h-[3px] w-[26px] rounded bg-ink transition dark:bg-white ${open ? "opacity-0" : ""}`} />
           <span
-            className={`h-[3px] w-[26px] rounded bg-ink transition ${
+            className={`h-[3px] w-[26px] rounded bg-ink transition dark:bg-white ${
               open ? "-translate-y-[8px] -rotate-45" : ""
             }`}
           />
@@ -125,7 +126,7 @@ export default function Header({ onStartChat }) {
 
       {/* Menú móvil */}
       <nav
-        className={`fixed inset-x-0 top-[72px] z-40 flex max-h-[calc(100vh-72px)] flex-col gap-1.5 overflow-y-auto border-b border-line bg-white p-4 shadow-[0_20px_40px_rgba(18,32,51,.12)] transition-transform duration-300 lg:hidden ${
+        className={`fixed inset-x-0 top-[72px] z-40 flex max-h-[calc(100vh-72px)] flex-col gap-1.5 overflow-y-auto border-b border-line bg-white p-4 shadow-[0_20px_40px_rgba(18,32,51,.12)] transition-transform duration-300 dark:border-white/10 dark:bg-[#0b1422] lg:hidden ${
           open ? "translate-y-0" : "-translate-y-[130%]"
         }`}
       >
@@ -135,7 +136,7 @@ export default function Header({ onStartChat }) {
             href={l.href}
             onClick={close}
             className={`rounded-xl px-4 py-3 font-bold transition ${
-              active === l.href ? "bg-primary-light text-primary" : "text-ink-soft hover:bg-bg-muted"
+              active === l.href ? "bg-primary-light text-primary dark:bg-white/10 dark:text-white" : "text-ink-soft hover:bg-bg-muted dark:text-slate-300 dark:hover:bg-white/10"
             }`}
           >
             {l.label}
@@ -148,7 +149,7 @@ export default function Header({ onStartChat }) {
           }}
           className="mt-1 rounded-xl bg-primary px-4 py-3 text-center font-bold text-white"
         >
-          Empezar chat
+          {t.nav.start}
         </button>
       </nav>
     </header>
